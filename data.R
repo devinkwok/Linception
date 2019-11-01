@@ -4,6 +4,8 @@
 options(error=function()traceback(2))
 
 DATA_PATH = "datasets"
+MAX_DATASETS = 1  # to limit computation time while debugging
+
 MIN_COLUMNS = 2
 MAX_COLUMNS = 15
 MIN_ROWS = 100
@@ -110,11 +112,12 @@ combination_matrix = function(size) {
 # ASSUMPTION: first column of dataframe is used as response variable
 # FIXME: incomplete
 fit_linear_models = function(dataframe) {
-    models = list()
     #TODO: k-fold cross validation
     # get dataset columns
     columns = colnames(dataframe)
     num_predictors = length(columns) - 1
+
+    # print(columns)
     
     response_var = columns[1]
     predictors = columns[-1] # this removes column 1 from the list
@@ -126,17 +129,36 @@ fit_linear_models = function(dataframe) {
     # rows are for different linear models
     # columns are the inclusion/exclusion of that column in the dataframe
     inclusion_matrix = combination_matrix(num_predictors)
-    for (i in range(length(inclusion_matrix[,1]))) {
-        included_predictors = list()
-        for (j in range(num_predictors)) {
+
+    models = vector("list", nrow(inclusion_matrix))
+
+    # iterate through rows for each model
+    for (i in 1:length(inclusion_matrix[,1])) {
+        
+        num_included = sum(inclusion_matrix[i,])
+        
+        included_predictors = vector("list", num_included)
+        k = 1  # because R needs index variables
+        
+        # iterate through columns for each predictor
+        for (j in 1:num_predictors) {
             if (inclusion_matrix[i, j] == 1) {
-                included_predictors = append(included_predictors, predictors[j])
+                included_predictors[k] = predictors[j]
+                k = k + 1
             }
         }
-        predictor_string = paste(included_predictors, sep="+")
-        print(predictor_string)
-        model = lm(formula=paste(response_var, "~", predictor_string), data=dataframe)
-        models = append(models, c(inclusion_matrix[,j], model))
+
+        # if there are no predictors, add a constant term
+        formula_string = "1"
+        if (length(included_predictors) > 0) {
+            formula_string = paste(included_predictors, collapse="+")
+        }
+        formula_string = paste(response_var, "~", formula_string)
+        
+        # train the model
+        model = lm(formula=formula_string, data=dataframe)
+        predictor_matrix_row = inclusion_matrix[j,]
+        models[[i]] = c(predictor_matrix_row, model)
     }
     return(models)
 }
@@ -144,19 +166,21 @@ fit_linear_models = function(dataframe) {
 # tests loading data, then generating linear models as data to input into meta model
 generate_lms = function() {
     filenames = list.files(path=DATA_PATH)
+    filenames = filenames[1:MAX_DATASETS]
     linear_models = list()
-    print(filenames)
+
     for (filename in filenames) {
         dataset = load_dataframe(DATA_PATH, filename)
-        print(head(dataset))
+
         models = fit_linear_models(dataset)
         linear_models = append(linear_models, models)
+        print(summary(linear_models))
     }
     return(linear_models)
 }
 
 # only need to run the following once to get data into files
-filenames = save_builtin_datasets_to_file(5, DATA_PATH)
+# filenames = save_builtin_datasets_to_file(MAX_DATASETS, DATA_PATH)
 
 # where everything starts
 lms = generate_lms()
