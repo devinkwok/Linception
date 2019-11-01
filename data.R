@@ -3,6 +3,7 @@
 # traceback errors for debugging
 options(error=function()traceback(2))
 
+DATA_PATH = "datasets"
 MIN_COLUMNS = 2
 MAX_COLUMNS = 15
 MIN_ROWS = 100
@@ -46,15 +47,6 @@ is_valid_data = function(dataframe) {
     return(TRUE)
 }
 
-# # data() has some weird behaviour returning strings instead of dataframes
-# # this solution solves it
-# # from https://stackoverflow.com/questions/30951204/load-dataset-from-r-package-using-data-assign-it-directly-to-a-variable
-# getdata = function(name) {
-#     e <- new.env()
-#     name <- data(eval(name), envir = e)[1]
-#     e[[name]]
-# }
-
 # for some reason R doesn't want to work with getdata in the for loop (maybe due to scope?)
 # this extra function seems to fix that problem
 get_builtin_data = function(name) {
@@ -66,10 +58,9 @@ strip_whitespace_trailing = function(string) {
     return(sub(" .*", "", string))
 }
 
-
-# load and check data, return a list of vectors of (name, datasets)
-load_data = function(max_datasets=5) {
-    # TODO: use R's built in datasets for now
+# utility function to enable use of R's built in datasets
+# later we will use files with data from outside sources
+save_builtin_datasets_to_file = function(max_datasets, path) {
 
     # beware: data() returns a dataframe
     # with results in data()$results but this is a vector!
@@ -79,9 +70,7 @@ load_data = function(max_datasets=5) {
     # need to get rid of any characters after a space in the names
     # for R to be able to find the dataset
     names = lapply(names, strip_whitespace_trailing)
-
-    datasets = list()
-    added_names = list()
+    added_names = vector("list", max_datasets)
 
     # use a separate increment operator because append concatenates lists together
     # and also using array indexing breaks get(name) in get_builtin_data... wtf
@@ -90,22 +79,26 @@ load_data = function(max_datasets=5) {
         dataset = get_builtin_data(name)
         dataset = data.frame(dataset)
         if (is_valid_data(dataset)) {
-            # need to keep 2 separate lists because making datasets a "list of lists" was breaking
-            added_names[i] = name
-            datasets[i] = dataset
-            print(paste("Added dataset", name))
+            filename = file.path(path, paste(name, ".csv", sep=""))
+            write.table(dataset, file=filename)
+            added_names[i] = filename
+            print(paste("Saved dataset", filename))
             i = i + 1
         }
         else {
-            print(paste("Failed to add dataset", name))
+            print(paste("Failed to save dataset", name))
         }
         # truncate to max_datasets
         if (i > max_datasets) {
             break
         }
     }
-    print(paste("Loaded ", length(datasets), " datasets"))
-    return(list(added_names, datasets))
+    print(paste("Saved ", i - 1, " datasets"))
+    return(added_names)
+}
+
+load_dataframe = function(path, filename) {
+    return(read.table(file.path(path, filename)))
 }
 
 # creates a {0, 1} dataframe of [size] with every combination of 0 and 1 in rows
@@ -140,7 +133,7 @@ fit_linear_models = function(dataframe) {
                 included_predictors = append(included_predictors, predictors[j])
             }
         }
-        predictor_string = paste(included_predictors, collapse="+")
+        predictor_string = paste(included_predictors, sep="+")
         print(predictor_string)
         model = lm(formula=paste(response_var, "~", predictor_string), data=dataframe)
         models = append(models, c(inclusion_matrix[,j], model))
@@ -150,17 +143,20 @@ fit_linear_models = function(dataframe) {
 
 # tests loading data, then generating linear models as data to input into meta model
 generate_lms = function() {
-    names_and_data = load_data()
-    names = names_and_data[1]
-    datasets = names_and_data[2]
-    print(names)
+    filenames = list.files(path=DATA_PATH)
     linear_models = list()
-    for (dataset in datasets) {
-        # FIXME: not working yet
-        linear_models = append(linear_models, fit_linear_models(dataset))
+    print(filenames)
+    for (filename in filenames) {
+        dataset = load_dataframe(DATA_PATH, filename)
+        print(head(dataset))
+        models = fit_linear_models(dataset)
+        linear_models = append(linear_models, models)
     }
     return(linear_models)
 }
 
+# only need to run the following once to get data into files
+filenames = save_builtin_datasets_to_file(5, DATA_PATH)
+
+# where everything starts
 lms = generate_lms()
-print(lms) #debugging
