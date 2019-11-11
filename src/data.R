@@ -11,14 +11,15 @@ options(error=function()traceback(2))
 # library("car", lib.loc="lib")
 
 DATA_PATH = "datasets"
+OUTPUT_PATH = "outputs"
 EXTENSION = "csv"
-MAX_DATASETS = 2  # to limit computation time while debugging
+MAX_DATASETS = 5  # to limit computation time while debugging
 
 MIN_COLUMNS = 2
 MAX_COLUMNS = 15
 MIN_ROWS = 100
 MAX_ROWS = 10000
-NUM_FOLDS = 2 # for k fold cross validation, set to 5 later
+NUM_FOLDS = 5 # for k fold cross validation, set to 5 later
 RANDOM_SEED = 001 # seed for rng generator
 
 # internal data format: data frames don't work with lm objects
@@ -48,7 +49,7 @@ logging_print = function(message, ...) {
 #
 # to append a column, use the regular append function directly
 
-append_list_of_lists = function(list_of_lists_1, list_of_lists_2) {
+append_list_of_lists_rows = function(list_of_lists_1, list_of_lists_2) {
     
     # if either list is NULL, return the non-null list
     if (is.null(list_of_lists_1)) {
@@ -58,7 +59,7 @@ append_list_of_lists = function(list_of_lists_1, list_of_lists_2) {
         }
         # swap so that list_1 is not NULL, so that everything
         # after this uses the same code path
-        return(append_list_of_lists(list_of_lists_2,list_of_lists_1))
+        return(append_list_of_lists_rows(list_of_lists_2,list_of_lists_1))
     }
 
     # sanity check, lists should have same number of columns
@@ -132,6 +133,13 @@ is_valid_data = function(dataframe) {
     return(TRUE)
 }
 
+save_table = function(dataframe, name, path) {
+    filename = file.path(path, paste(name, EXTENSION, sep="."))
+    write.table(dataframe, file=filename)
+    logging_print("Saved dataset", filename)
+    return(filename)
+}
+
 # for some reason R doesn't want to work with getdata in the for loop (maybe due to scope?)
 # this extra function seems to fix that problem
 get_builtin_data = function(name) {
@@ -164,10 +172,7 @@ save_builtin_datasets_to_file = function(max_datasets, path) {
         dataset = get_builtin_data(name)
         dataset = data.frame(dataset)
         if (is_valid_data(dataset)) {
-            filename = file.path(path, paste(name, EXTENSION, sep="."))
-            write.table(dataset, file=filename)
-            added_names[i] = filename
-            print(paste("Saved dataset", filename))
+            added_names[i] = save_table(dataset, name, path)
             i = i + 1
         }
         else {
@@ -178,7 +183,7 @@ save_builtin_datasets_to_file = function(max_datasets, path) {
             break
         }
     }
-    print(paste("Saved ", i - 1, " datasets"))
+    logging_print("Saved total num of datasets:", i-1)
     return(added_names)
 }
 
@@ -191,10 +196,21 @@ combination_matrix = function(size) {
     return(expand.grid(rep(list(c(0:1)), size)))
 }
 
+# ASSUMPTION: the first named column is the response variable
+get_response_colname = function(dataframe) {
+    columns = colnames(dataframe)
+    return(columns[1])
+}
+
+get_predictors_colnames = function(dataframe) {
+    columns = colnames(dataframe)
+    return(columns[-1]) # this removes column 1 from the list
+}
+
 # refactor this out of fit_linear_models
-build_formula_string = function(inclusion_matrix_row, columns) {
-    response_var = columns[1]
-    predictors = columns[-1] # this removes column 1 from the list
+build_formula_string = function(inclusion_matrix_row, dataframe) {
+    response_var = get_response_colname(dataframe)
+    predictors = get_predictors_colnames(dataframe)
     num_included = sum(inclusion_matrix_row)
     
     included_predictors = vector("list", num_included)
@@ -225,9 +241,11 @@ k_fold_split = function(dataframe, num_folds) {
     min_rows_per_fold = floor(rows / num_folds)
     fold_id = rep(1:num_folds, min_rows_per_fold)
 
-    # add in remainder to match with number of rows
+    # add in remainder to match with number of rows ONLY if remainder nonzero
     remainder = rows %% num_folds
-    fold_id = c(fold_id, 1:remainder)
+    if (remainder > 0) {
+        fold_id = c(fold_id, 1:remainder)
+    }
 
     # randomize selection of folds
     set.seed(RANDOM_SEED) # make output consistent
@@ -237,7 +255,9 @@ k_fold_split = function(dataframe, num_folds) {
         # train: select from dataframe where fold != i
         train_sets[[i]] = dataframe[fold_id != i,]
         # test: select from dataframe where fold == i
-        train_sets[[i]] = dataframe[fold_id == i,]
+        test_sets[[i]] = dataframe[fold_id == i,]
+        # print(train_sets[[i]])
+        # print(test_sets[[i]])
     }
 
     k_folds = list(
@@ -251,9 +271,6 @@ k_fold_split = function(dataframe, num_folds) {
 # fits linear models for every combination of parameters to a dataset
 # ASSUMPTION: first column of dataframe is used as response variable
 fit_linear_models = function(data_index, dataframe, num_folds) {
-
-    columns = colnames(dataframe)
-
     # go through all combinations of predictors
     # TODO: if there are too many predictors it is better to stochastically sample this space
     
@@ -261,7 +278,8 @@ fit_linear_models = function(data_index, dataframe, num_folds) {
     # rows are for different linear models
     # columns are the inclusion/exclusion of that column in the dataframe
     # number of predictors is number of columns - 1
-    inclusion_matrix = combination_matrix(length(columns) - 1)
+    num_cols = length(get_predictors_colnames(dataframe))
+    inclusion_matrix = combination_matrix(num_cols)
 
     # assign data in data frame to k-folds
     # adding a new column
@@ -273,25 +291,31 @@ fit_linear_models = function(data_index, dataframe, num_folds) {
     for (i in 1:length(inclusion_matrix[,1])) {
 
         included_predictors = inclusion_matrix[i,]
-        formula_string = build_formula_string(included_predictors, columns)
+        formula_string = build_formula_string(included_predictors, dataframe)
 
         for (j in 1:num_folds) {
             
             train_data = data_folds[["train"]][[j]]
+            response_var = train_data[[get_response_colname(dataframe)]]
             model = lm(formula=formula_string, data=train_data)
-
-            test_data = data_folds[["test"]][[j]]
-            test_results = test_lm(model, test_data)
 
             model_data_row = list(
                 "dataset"=data_index,
                 "lm"=model,
-                "predictors"=included_predictors,
-                "k-fold"=j
+                "response_mean"=mean(response_var),
+                "response_sd"=sd(response_var),
+                "predictors"=paste(included_predictors, collapse=""),
+                "k_fold"=j
                 )
-            
-            model_and_test_data = append(model_data_row, test_results)
-            model_data = append_list_of_lists(model_data, model_and_test_data)
+
+            test_data = data_folds[["test"]][[j]]
+            test_results = test_lm(model, test_data)
+
+            statistics = get_individual_statistics(model)
+
+            model_data_row = append(model_data_row, test_results)
+            model_data_row = append(model_data_row, statistics)
+            model_data = append_list_of_lists_rows(model_data, model_data_row)
         }
     }
     return(model_data)
@@ -300,12 +324,21 @@ fit_linear_models = function(data_index, dataframe, num_folds) {
 # finds MSE for linear_model on test_data, assuming first column is response
 # TODO: test
 test_lm = function(linear_model, test_data) {
-    predict_response = predict(linear_model, test_data)
-    true_response = test_data[,1]
+    predict_response = predict(linear_model, newdata=test_data)
+    true_response = test_data[[get_response_colname(test_data)]]
     num_samples = length(true_response)
-    mse = (predict_response - true_response)^2 / num_samples
+    sse = sum((predict_response - true_response)^2)
+    mse = sse / num_samples
+    sd_response = sd(true_response)
+
     test_results = list(
-        "mse"=mse
+        "sse"=sse,
+        "test_mean"=mean(true_response),
+        "test_sd"=sd_response,
+        "mse"=mse,
+        "mse_sqrt"=sqrt(mse),
+        "standardized_mse"=mse / sd_response,
+        "standardized_mse_sqrt"=sqrt(mse / sd_response)
         ) # can add more columns here as needed
     
     return(test_results)
@@ -320,8 +353,7 @@ get_individual_statistics = function(linear_model) {
         "num_training_samples"=(linear_model$df.residual + linear_model$rank),
         "num_coefficients"=linear_model$rank,
         "r_squared"=summary_obj$r.squared,
-        "r_squared_adjusted"=summary_obj$adj.r.squared,
-
+        "r_squared_adjusted"=summary_obj$adj.r.squared
         # VIF needs package
         )
     return(statistics)
@@ -368,25 +400,56 @@ generate_lms = function(data_directory, max_datasets, num_folds) {
     filenames = filenames[1:max_datasets]  # truncate
     
     for (i in 1:length(filenames)) {
-        dataset = read.table(file.path(data_directory, filenames[i]))
+        name = filenames[i]
+        dataset = read.table(file.path(data_directory, name))
+        logging_print("Generating linear models for dataset:", name)
         models_and_data = fit_linear_models(i, dataset, num_folds)
-        # print(names(models_and_data))
-        print(models_and_data[["predictors"]])
-        linear_models = append_list_of_lists(linear_models, models_and_data)
+        linear_models = append_list_of_lists_rows(linear_models, models_and_data)
     }
     return(linear_models)
 }
 
-# TODO: call this after linear models generated
-# need graph of adjacent models
-generate_lm_statistics = function(models_and_data) {
-    # statistics = get_individual_statistics(model)
+# excluded_columns is a named list, if the item is not null the column is excluded
+make_data_frame = function(list_of_lists, excluded_columns) {
+    col_names = names(list_of_lists)
+    num_cols = length(col_names)
+    dataframe = NULL # otherwise dataframe has 0 rows and won't append
+
+    for (name in col_names) {
+        # if excluded_columns$NAME returns non-null,
+        # list_of_lists$NAME is not added to the data frame
+        if (is.null(excluded_columns[[name]])) {
+            column = unlist(list_of_lists[[name]], use.names="FALSE")
+
+            if (is.null(dataframe)) {
+                dataframe = data.frame(column)
+                colnames(dataframe) = c(name)
+            }
+            else {  # append column
+                dataframe[[name]] = column
+            }
+        }
+    }
+    return(dataframe)
+}
+
+timestamp = function(prefix) {
+    time = gsub("[ :]", "-", Sys.time())
+    return(paste(prefix, time, sep="_"))
+}
+
+generate_data = function() {
+    lms_and_data = generate_lms(DATA_PATH, MAX_DATASETS, NUM_FOLDS)
+    # remove column with linear models since they are objects
+    excluded_columns = list("lm"=TRUE)
+    dataframe = make_data_frame(lms_and_data, excluded_columns)
+    metafile_name = timestamp("lm-data-individual")
+    logging_print("Generated lm data with head():", head(dataframe))
+    save_table(dataframe, metafile_name, OUTPUT_PATH)
 }
 
 # only need to run the following once to get data into files
 # filenames = save_builtin_datasets_to_file(MAX_DATASETS, DATA_PATH)
 
-# to use: run these
-lms = generate_lms(DATA_PATH, MAX_DATASETS, NUM_FOLDS)
-# print(lms)
-# generate_lm_statistics(lms)
+# to use: run this
+generate_data()
