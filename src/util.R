@@ -1,5 +1,20 @@
 EXTENSION = "csv"
 
+# conditions for dataset to satisfy
+DEFAULT_REQUIRES = list(
+    "TYPEOF" = "data.frame",
+    "MIN_RESPONSE" = 1,
+    "MAX_RESPONSE" = 1,
+    "MIN_COLS" = 3,
+    "MAX_COLS" = 15,
+    "MIN_ROWS" = 100,
+    "MAX_ROWS" = 10000,
+
+    # escape all R and regex reserved characters in prefixes
+    "RESPONSE_VAR_PREFIX" = "RESPONSE_VARIABLEx",
+    "NULL_PREDICTOR_PREFIX" = "NULL_PREDICTORx"
+)
+
 # utility function for printing error messages
 logging_print = function(message, ...) {
     dots = list(...)
@@ -77,8 +92,84 @@ get_builtin_data = function(name) {
     return(get(name))
 }
 
-load_dataframe = function(path, filename) {
-    return(read.table(file.path(path, filename)))
+find_prefixed_var_index = function(columns, prefix) {
+    return(grep(paste(prefix, ".*", sep=""), columns))
+}
+
+# removes columns named as empty string ""
+remove_null = function(dataframe, null_prefix) {
+    df = dataframe
+    columns = colnames(df)
+    indexes = find_prefixed_var_index(columns, null_prefix)
+    df[indexes] = NULL
+    return(df)
+}
+
+replace_and_shuffle_to_front = function(vector, index, replacement) {
+    return(c(replacement, vector[-index]))
+}
+
+# checks if dataframe is valid to include
+is_valid_data = function(dataframe, requires=DEFAULT_REQUIRES) {
+    if(!inherits(dataframe, requires$TYPEOF)) {
+        logging_print("ERROR: object is not a dataframe:", dataframe)
+        return(FALSE)
+    }
+
+    columns = colnames(remove_null(dataframe, requires$NULL_PREDICTOR_PREFIX))
+
+    #check for one response variable
+    index = find_prefixed_var_index(columns, requires$RESPONSE_VAR_PREFIX)
+    if (length(index) < requires$MIN_RESPONSE
+            || length(index) > requires$MAX_RESPONSE) {
+        logging_print("ERROR: invalid number of response variables", index)
+        return(FALSE)
+    }
+
+    # check for sufficient predictors
+    num_columns = length(columns) - length(index)
+    if (num_columns < requires$MIN_COLS
+            || num_columns > requires$MAX_COLS) {
+        logging_print("ERROR: invalid number of predictors", num_columns)
+        return(FALSE)
+    }
+
+    # check for sufficient samples
+    num_rows = nrow(dataframe)
+    if (num_rows < requires$MIN_ROWS
+            ||  num_rows > requires$MAX_ROWS) {
+        logging_print("ERROR: invalid number of samples", num_rows)
+        return(FALSE)
+    }
+
+    # check for na values
+    for (column in columns) {
+        number_na = sum(is.na(dataframe[column]))
+        if (number_na > 0) {
+            logging_print("ERROR: NA values found in dataframe", number_na)
+            return(FALSE)
+        }
+    }
+
+    #TODO: check for categorical variables
+    #TODO: check for any other issues? (e.x. zeros for logistic regression)
+    return(TRUE)
+}
+
+load_dataframe = function(path, filename, requires=DEFAULT_REQUIRES) {
+    dataframe = read.table(file.path(path, filename))
+    if (is_valid_data(dataframe, requires)) {
+        # remove null columns
+        print(colnames(dataframe))
+        dataframe = remove_null(dataframe, requires$NULL_PREDICTOR_PREFIX)
+        # reorder so that response variable comes first
+        columns = colnames(dataframe)
+        index = find_prefixed_var_index(columns, requires$RESPONSE_VAR_PREFIX)
+        columns = replace_and_shuffle_to_front(columns, index, columns[index])
+        print(head(dataframe))
+        return(dataframe)
+    }
+    return(NULL)
 }
 
 save_dataframe = function(dataframe, name, path) {
@@ -118,7 +209,6 @@ timestamp = function(prefix) {
 }
 
 list_data_filenames = function(path) {
-    print(path)
     filenames = list.files(path=path)
 
     valid_indexes = vector()
@@ -140,7 +230,7 @@ list_data_filenames = function(path) {
 
 # utility function to enable use of R's built in datasets
 # later we will use files with data from outside sources
-save_builtin_datasets_to_file = function(max_datasets, path) {
+save_builtin_datasets_to_file = function(max_datasets, path, requires=DEFAULT_REQUIRES) {
 
     # beware: data() returns a dataframe
     # with results in data()$results but this is a vector!
@@ -157,14 +247,28 @@ save_builtin_datasets_to_file = function(max_datasets, path) {
     i = 1
     for (name in names) {
         dataset = get_builtin_data(name)
-        dataset = data.frame(dataset)
-        if (is_valid_data(dataset)) {
-            added_names[i] = save_dataframe(dataset, name, path)
-            i = i + 1
-        }
-        else {
-            logging_print("Failed to save dataset", name)
-        }
+        # if the dataset can't be made into a dataframe, ignore it and move on
+        tryCatch(
+            {
+                dataset = data.frame(dataset)
+                # assume first column is response variable, tag with prefix
+                columns = colnames(dataset)
+                response_name = paste(requires$RESPONSE_VAR_PREFIX, columns[1], sep="")
+                columns = replace_and_shuffle_to_front(columns, 1, response_name)
+                colnames(dataset) = columns
+                
+                if (!is_valid_data(dataset, requires)) {
+                    stop("conditions not met", call = NULL)
+                }
+                added_names[i] = save_dataframe(dataset, name, path)
+                i = i + 1
+            },
+            error=function(cond)
+            {
+                logging_print("Failed to save dataset", name, cond$message)
+            }
+        )
+
         # truncate to max_datasets
         if (i > max_datasets) {
             break
@@ -172,43 +276,4 @@ save_builtin_datasets_to_file = function(max_datasets, path) {
     }
     logging_print("Saved total num of datasets:", i-1)
     return(added_names)
-}
-
-# checks if dataframe is valid to include
-is_valid_data = function(dataframe) {
-    if(!inherits(dataframe, "data.frame")) {
-        logging_print("ERROR: object is not a dataframe:", dataframe)
-        return(FALSE)
-    }
-
-    # check for sufficient predictors
-    num_columns = length(colnames(dataframe))
-    if (num_columns < MIN_COLUMNS || num_columns > MAX_COLUMNS) {
-        logging_print("ERROR: invalid number of predictors", num_columns)
-        return(FALSE)
-    }
-
-    # check for sufficient samples
-    num_samples = nrow(dataframe)
-    if (num_samples < MIN_ROWS ||  num_samples > MAX_ROWS) {
-        logging_print("ERROR: invalid number of samples", num_samples)
-        return(FALSE)
-    }
-
-    # check for na values
-    for (column in columns) {
-        number_na = sum(is.na(dataframe$column))
-        if (number_na > 0) {
-            logging_print("ERROR: NA values found in dataframe", number_na)
-            return(FALSE)
-        }
-    }
-
-    #TODO: check for categorical variables
-
-    #TODO: check for min/max number of predictors
-
-    #TODO: check for any other issues? (e.x. zeros for logistic regression)
-
-    return(TRUE)
 }

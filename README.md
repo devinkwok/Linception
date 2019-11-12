@@ -6,6 +6,28 @@ Concept and code by Devin Kwok.
 In fulfillment of Stat 429 group project, fall 2019, University of Calgary.
 Project partner Kevin Wong.
 
+Requirements
+------------
+* CRAN package `car`
+* CRAN package `igraph`
+
+How to use
+----------
+1. Add datasets into `datasets/`. Each dataset should be a `.csv` file readable
+by the R function `read.table()`. Choose one column as the response variable and
+prefix the column name with `RESPONSE_VARIABLEx`.
+Any column names prefixed with `"NULL_PREDICTORx"` are ignored.
+Currently, categorical variables are not supported.
+Example:
+```
+"!response-variable!DriversKilled" "drivers" "front" "rear" "kms" "PetrolPrice" NULL NULL
+"1" 107 1687 867 269 9059 0.102971811805368 12 0
+"2" 97 1508 825 265 7685 0.102362995884646 6 0
+
+2. Run `generate_data()` in `data.R`. This will output a `.csv` file containing linear models and their statistics to `outputs/`.
+```
+
+
 Overview
 --------
 The goal of this project is to minimize the test error of a linear model

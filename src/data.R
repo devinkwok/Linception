@@ -11,15 +11,10 @@ options(error=function()traceback(2))
 # TODO: need R version 3.05 or higher to get most recent version of car
 # library("car", lib.loc="lib")
 
-DATA_PATH = file.path("datasets", "builtin")
+DATA_PATH = file.path("datasets", "set1")
 # DATA_PATH = file.path("datasets", "kevin")
 OUTPUT_PATH = "outputs"
 MAX_DATASETS = 5  # to limit computation time while debugging
-
-MIN_COLUMNS = 2
-MAX_COLUMNS = 15
-MIN_ROWS = 100
-MAX_ROWS = 10000
 NUM_FOLDS = 5
 RANDOM_SEED = 001 # seed for rng generator
 
@@ -93,8 +88,6 @@ k_fold_split = function(dataframe, num_folds) {
         train_sets[[i]] = dataframe[fold_id != i,]
         # test: select from dataframe where fold == i
         test_sets[[i]] = dataframe[fold_id == i,]
-        # print(train_sets[[i]])
-        # print(test_sets[[i]])
     }
 
     k_folds = list(
@@ -216,26 +209,32 @@ generate_lms = function(data_directory, max_datasets, num_folds) {
     
     for (i in 1:length(filenames)) {
         name = filenames[i]
-        dataset = read.table(file.path(data_directory, name))
-        logging_print("Generating linear models for dataset:", name)
-        models_and_data = fit_linear_models(i, dataset, num_folds)
-        linear_models = append_list_of_lists_rows(linear_models, models_and_data)
+        dataset = load_dataframe(data_directory, name)
+        if (is.null(dataset)) {
+            logging_print("WARNING: dataset not loaded", name)
+        }
+        else {
+            logging_print("Generating linear models for dataset:", name)
+            models_and_data = fit_linear_models(i, dataset, num_folds)
+            linear_models = append_list_of_lists_rows(linear_models, models_and_data)
+        }
     }
     return(linear_models)
 }
 
 generate_data = function() {
     lms_and_data = generate_lms(DATA_PATH, MAX_DATASETS, NUM_FOLDS)
-    # remove column with linear models since they are objects
+    # remove column with linear models from output since they are objects
     excluded_columns = list("lm"=TRUE)
     dataframe = make_data_frame(lms_and_data, excluded_columns)
     metafile_name = timestamp("lm-data-individual")
-    logging_print("Generated lm data with head():", head(dataframe))
+    logging_print("Generated lm data with number of rows, head:",
+                    nrow(dataframe), head(dataframe))
     save_dataframe(dataframe, metafile_name, OUTPUT_PATH)
 }
 
 # only need to run the following once to get data into files
-# filenames = save_builtin_datasets_to_file(MAX_DATASETS, DATA_PATH)
+# filenames = save_builtin_datasets_to_file(MAX_DATASETS, file.path("datasets", "builtin"))
 
 # to use: run this
 generate_data()
