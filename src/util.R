@@ -1,4 +1,5 @@
-EXTENSION = "csv"
+# utility functions for loading and saving dataframes
+# and manipulating list of lists
 
 # conditions for dataset to satisfy
 DEFAULT_REQUIRES = list(
@@ -156,24 +157,22 @@ is_valid_data = function(dataframe, requires=DEFAULT_REQUIRES) {
     return(TRUE)
 }
 
-load_dataframe = function(path, filename, requires=DEFAULT_REQUIRES) {
-    dataframe = read.table(file.path(path, filename))
+load_dataframe = function(filename, requires=DEFAULT_REQUIRES) {
+    dataframe = read.table(filename)
     if (is_valid_data(dataframe, requires)) {
         # remove null columns
-        print(colnames(dataframe))
         dataframe = remove_null(dataframe, requires$NULL_PREDICTOR_PREFIX)
         # reorder so that response variable comes first
         columns = colnames(dataframe)
         index = find_prefixed_var_index(columns, requires$RESPONSE_VAR_PREFIX)
         columns = replace_and_shuffle_to_front(columns, index, columns[index])
-        print(head(dataframe))
         return(dataframe)
     }
     return(NULL)
 }
 
 save_dataframe = function(dataframe, name, path) {
-    filename = file.path(path, paste(name, EXTENSION, sep="."))
+    filename = file.path(path, name)
     write.table(dataframe, file=filename)
     logging_print("Saved dataset", filename)
     return(filename)
@@ -203,19 +202,21 @@ make_data_frame = function(list_of_lists, excluded_columns) {
     return(dataframe)
 }
 
-timestamp = function(prefix) {
+timestamp = function(prefix, suffix) {
     time = gsub("[ :]", "-", Sys.time())
-    return(paste(prefix, time, sep="_"))
+    output_string = paste(prefix, time, sep="_")
+    output_string = paste(output_string, suffix, sep=".")
+    return(output_string)
 }
 
-list_data_filenames = function(path) {
+list_data_filenames = function(path, target_extension) {
     filenames = list.files(path=path)
 
     valid_indexes = vector()
     for (i in 1:length(filenames)) {
         extension = strsplit(filenames[i], "\\.")[[1]]
         extension = extension[[length(extension)]]
-        if (extension == EXTENSION) {
+        if (extension == target_extension) {
             valid_indexes = append(valid_indexes, i)
         }
     }
@@ -230,7 +231,7 @@ list_data_filenames = function(path) {
 
 # utility function to enable use of R's built in datasets
 # later we will use files with data from outside sources
-save_builtin_datasets_to_file = function(max_datasets, path, requires=DEFAULT_REQUIRES) {
+save_builtin_datasets_to_file = function(max_datasets, path, ext, requires=DEFAULT_REQUIRES) {
 
     # beware: data() returns a dataframe
     # with results in data()$results but this is a vector!
@@ -260,7 +261,7 @@ save_builtin_datasets_to_file = function(max_datasets, path, requires=DEFAULT_RE
                 if (!is_valid_data(dataset, requires)) {
                     stop("conditions not met", call = NULL)
                 }
-                added_names[i] = save_dataframe(dataset, name, path)
+                added_names[i] = save_dataframe(dataset, paste(name, ext, sep="."), path)
                 i = i + 1
             },
             error=function(cond)
