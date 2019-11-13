@@ -73,13 +73,31 @@ append_list_of_lists_rows = function(list_of_lists_1, list_of_lists_2) {
         return(NULL)
     }
 
+    # go through every column and append them together
     appended_list = vector("list", num_columns)
-    for (i in 1:length(list_of_lists_1)) {
+    for (i in 1:num_columns) {
         appended_list[[i]] = append(list_of_lists_1[[i]], list_of_lists_2[[i]])
     }
     # weird syntax for assigning names
     names(appended_list) = names(list_of_lists_1)
     return(appended_list)
+}
+
+# find first index of obj_to_match in column
+get_list_of_lists_index = function(list_of_lists, column, obj_to_match) {
+    return(match(obj_to_match, list_of_lists[[column]]))
+}
+
+# returns a horizontal slice of a list of lists at index
+get_list_of_lists_row = function(list_of_lists, index) {
+    num_columns = length(list_of_lists)
+    # go through every column and append them together
+    row = vector("list", num_columns)
+    for (i in 1:num_columns) {
+        row[[i]] = list_of_lists[[i]][[index]]
+    }
+    names(row) = names(list_of_lists)
+    return(row)
 }
 
 # regex for removing first space and any trailing characters from string
@@ -163,6 +181,9 @@ load_dataframe = function(filename, requires=DEFAULT_REQUIRES) {
         # remove null columns
         dataframe = remove_null(dataframe, requires$NULL_PREDICTOR_PREFIX)
         # reorder so that response variable comes first
+        # FIXME: this only reorders the names, need to reorder dataframe
+        # other_indexes = c(1:length(columns))
+        # dataframe = dataframe[,c(index, )]
         columns = colnames(dataframe)
         index = find_prefixed_var_index(columns, requires$RESPONSE_VAR_PREFIX)
         columns = replace_and_shuffle_to_front(columns, index, columns[index])

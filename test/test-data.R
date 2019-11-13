@@ -1,36 +1,5 @@
+source(file.path("test", "include.R"))
 source(file.path("src", "data.R"))
-
-EPSILON = 0.00000001
-
-assert_equal = function(obj_1, obj_2) {
-    if (is.numeric(obj_1) && is.numeric(obj_2)) {
-        if (obj_1 - obj_2 < EPSILON) {
-            return(TRUE)
-        }
-    }
-    if (identical(obj_1, obj_2)) {
-        print("test passed")
-        return(TRUE)
-    }
-    print("TEST FAILED: objects differ")
-    print(paste(obj_1, typeof(obj_1)))
-    print(paste(obj_2, typeof(obj_2)))
-    return(FALSE)
-}
-
-test_append_list_of_lists_rows = function() {
-    list_1 = NULL
-    list_2 = NULL
-    assert_equal(TRUE, is.null(append_list_of_lists_rows(list_1, list_2)))
-
-    list_1 = list("a"=c(1,2,3), "b"=c("A","B","C"), "c"=c(0.1,0.2,0.3))
-    assert_equal(list_1, append_list_of_lists_rows(list_1, list_2))
-
-    list_2 = list("a"=c(4,5), "b"=c("D","E"), "c"=c(0.4,0.5))
-    assert_equal(list("a"=c(1,2,3,4,5), "b"=c("A","B","C","D","E"), "c"=c(0.1,0.2,0.3,0.4,0.5))
-        , append_list_of_lists_rows(list_1, list_2))
-}
-test_append_list_of_lists_rows()
 
 test_k_fold_split = function() {
     num = as.integer(10)
@@ -57,6 +26,10 @@ test_test_lm = function() {
     test$predict = train$predict
     colnames(test) = c("response", "predict")
 
+    # this test is broken but the function test_lm is fine
+    # for some reason setting up the dataframe above
+    # makes it a list according to weird R indexing rules
+    # by obj[[parameter_name]]
     lm_1 = lm("response~predict", data=train)
     test_1 = test_lm(lm_1, test)
     assert_equal(0, test_1[["mse"]])
