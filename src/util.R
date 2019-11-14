@@ -111,15 +111,15 @@ get_builtin_data = function(name) {
     return(get(name))
 }
 
-find_prefixed_var_index = function(columns, prefix) {
+find_prefixed_var_index = function(dataframe, prefix) {
+    columns = colnames(dataframe)
     return(grep(paste(prefix, ".*", sep=""), columns))
 }
 
 # removes columns named as empty string ""
 remove_null = function(dataframe, null_prefix) {
     df = dataframe
-    columns = colnames(df)
-    indexes = find_prefixed_var_index(columns, null_prefix)
+    indexes = find_prefixed_var_index(df, null_prefix)
     df[indexes] = NULL
     return(df)
 }
@@ -138,7 +138,7 @@ is_valid_data = function(dataframe, requires=DEFAULT_REQUIRES) {
     columns = colnames(remove_null(dataframe, requires$NULL_PREDICTOR_PREFIX))
 
     #check for one response variable
-    index = find_prefixed_var_index(columns, requires$RESPONSE_VAR_PREFIX)
+    index = find_prefixed_var_index(dataframe, requires$RESPONSE_VAR_PREFIX)
     if (length(index) < requires$MIN_RESPONSE
             || length(index) > requires$MAX_RESPONSE) {
         logging_print("ERROR: invalid number of response variables", index)
@@ -177,16 +177,21 @@ is_valid_data = function(dataframe, requires=DEFAULT_REQUIRES) {
 
 load_dataframe = function(filename, requires=DEFAULT_REQUIRES) {
     dataframe = read.table(filename)
+
     if (is_valid_data(dataframe, requires)) {
+
         # remove null columns
         dataframe = remove_null(dataframe, requires$NULL_PREDICTOR_PREFIX)
+
         # reorder so that response variable comes first
-        # FIXME: this only reorders the names, need to reorder dataframe
-        # other_indexes = c(1:length(columns))
-        # dataframe = dataframe[,c(index, )]
-        columns = colnames(dataframe)
-        index = find_prefixed_var_index(columns, requires$RESPONSE_VAR_PREFIX)
-        columns = replace_and_shuffle_to_front(columns, index, columns[index])
+        response_index = find_prefixed_var_index(dataframe, requires$RESPONSE_VAR_PREFIX)
+        indexes = c(1:ncol(dataframe))
+        indexes = replace_and_shuffle_to_front(indexes, response_index, response_index)
+        dataframe = dataframe[indexes]
+
+        # normalize so there are no negative values
+        dataframe = normalize_dataframe(dataframe)
+
         return(dataframe)
     }
     return(NULL)
@@ -248,6 +253,18 @@ list_data_filenames = function(path, target_extension) {
     else {
         return(NULL)
     }
+}
+
+# normalizes dataframe by ranging all values from 1 to 2
+normalize_dataframe = function(dataframe) {
+    df = dataframe
+    for (i in 1:ncol(dataframe)) {
+        column = dataframe[i]
+        smallest = min(column)
+        range = max(column) - smallest
+        df[i] = (column - smallest + 1) / range
+    }
+    return(df)
 }
 
 # utility function to enable use of R's built in datasets

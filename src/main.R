@@ -10,7 +10,6 @@ MAX_DATASETS = 5
 NUM_FOLDS = 5
 
 # only need to run the following once to get data into files
-
 # filenames = save_builtin_datasets_to_file(MAX_DATASETS, BUILTIN_DATA_PATH, EXTENSION)
 
 # to use: run this

@@ -1,7 +1,9 @@
 # functions for building dataset for meta-model
 # work in parent folder to access folders like datasets and lib
 
-# library("car", lib.loc="lib")
+# need library for VIF and power transform functions
+library("car")
+
 
 source(file.path("src", "util.R"))
 source(file.path("src", "graph.R"))
@@ -72,7 +74,7 @@ fit_linear_models = function(data_index, dataframe, num_folds) {
 
     #create a graph of the predictors and get a list of vertices
     graph = create_pgraph(length(predictors))
-    vertices = list_pgraph_vertices(graph)
+    vertices = V(graph)
 
     # assign data in data frame to k-folds
     # TODO: split data into smaller numbers of observations
@@ -90,15 +92,20 @@ fit_linear_models = function(data_index, dataframe, num_folds) {
         test_data = data_folds[["test"]][[i]]
         response_var = train_data[[response_name]]
         per_fold_outputs = NULL
-        # need separate list because R can't handle objects in lists!
+        # need separate lists because R can't handle objects in lists!
         model_bank = list()
+        ptransform_bank = list()
 
         for (j in 1:length(vertices)) {
             vertex = vertices[j]
             predictor_matrix = get_vertex_predictors(vertex)
             formula_string = build_formula_string(predictor_matrix, response_name, predictors)
+
             model = lm(formula=formula_string, data=train_data)
             model_bank[[j]] = model
+
+            ptransform = get_power_transform(train_data, predictor_matrix)
+            ptransform_bank[[j]] = ptransform
 
             model_data = list(
                 "dataset"=data_index,
@@ -127,13 +134,15 @@ fit_linear_models = function(data_index, dataframe, num_folds) {
 
             sub_index = get_list_of_lists_index(per_fold_outputs, "predictors", subset)
             super_index = get_list_of_lists_index(per_fold_outputs, "predictors", superset)
-            subset_lm = model_bank[[sub_index]]
-            superset_lm = model_bank[[super_index]]
-            subset_data = get_list_of_lists_row(per_fold_outputs, sub_index)
-            superset_data = get_list_of_lists_row(per_fold_outputs, super_index)
+            sub_lm = model_bank[[sub_index]]
+            super_lm = model_bank[[super_index]]
+            sub_ptransform = ptransform_bank[[sub_index]]
+            super_ptransform = ptransform_bank[[super_index]]
+            sub_data = get_list_of_lists_row(per_fold_outputs, sub_index)
+            super_data = get_list_of_lists_row(per_fold_outputs, super_index)
 
-            paired_stats = get_paired_stats(subset_lm, superset_lm,
-                    subset_data, superset_data, added_predictor)
+            paired_stats = get_paired_stats(sub_lm, super_lm, sub_ptransform,
+                    super_ptransform, sub_data, super_data, added_predictor)
             pairwise_data = append_list_of_lists_rows(pairwise_data, paired_stats)
         }
         individual_data = append_list_of_lists_rows(individual_data, per_fold_outputs)
@@ -178,7 +187,24 @@ get_individual_stats = function(linear_model) {
     return(statistics)
 }
 
-get_paired_stats = function(subset_lm, superset_lm, subset_stats, superset_stats, added_predictor) {
+get_power_transform = function(dataset, predictor_matrix) {
+    response = get_response_colname(dataset)
+    predictors = get_predictors_colnames(dataset)
+    matrix = cbind(dataset[response])
+    for (i in 1:length(predictors)) {
+        if (predictor_matrix[i] == 1) {
+            name = predictors[[i]]
+            column = dataset[name]
+            matrix = cbind(matrix, column)
+        }
+    }
+    return(powerTransform(matrix))
+}
+
+# all stats are of the form superset - subset or superset/subset
+get_paired_stats = function(subset_lm, superset_lm, subset_ptransform,
+            superset_ptransform, subset_stats, superset_stats, added_predictor) {
+
     superset_summary = summary(superset_lm)$coefficients
     added_predictor_index = match(added_predictor, rownames(superset_summary))
     # t-test for coefficient, column 1 gives beta and 4 gives p-value
@@ -188,36 +214,84 @@ get_paired_stats = function(subset_lm, superset_lm, subset_stats, superset_stats
     # ANOVA row 2 gives superset model, p-value is in column 4
     anova_pvalue = anova(subset_lm, superset_lm)[2,4]
 
+    # AIC and BIC difference
+    n = superset_stats[["num_training_samples"]]
+    sub_p = subset_stats[["num_coefficients"]]
+    super_p = superset_stats[["num_coefficients"]]
+    sub_AIC = extractAIC(subset_lm, k=2)[[2]]
+    super_AIC = extractAIC(superset_lm, k=2)[[2]]
+    sub_AIC_cor = aic_correction(sub_AIC, n, sub_p)
+    super_AIC_cor = aic_correction(super_AIC, n, super_p)
+    sub_BIC = extractAIC(subset_lm, k=log(n))[[2]]
+    super_BIC = extractAIC(superset_lm, k=log(n))[[2]]
+
+    # shapiro-wilk normality test on residuals
+    sub_normality_pvalue = shapiro.test(subset_lm$residuals)[[2]]
+    super_normality_pvalue = shapiro.test(superset_lm$residuals)[[2]]
+
+    # variance inflation factor
+    # set to 0 if there is only 1 predictor (2 coefficients including intercept)
+    vifs = c(0)
+    if (super_p > 2) {
+        vifs = vif(superset_lm)
+    }
+    # need to reduce index by 1 because intercept isn't included
+    added_predictor_vif = vifs[[added_predictor_index - 1]]
+
+    # power transform (just the distance is fine for now)
+    # estimated power, row is the predictor and column 1 is estimated power
+    ptransform_summary = summary(superset_ptransform)
+    response_est_ptransform = ptransform_summary$result[1,1]
+    added_predictor_est_ptransform = ptransform_summary$result[added_predictor_index,1]
+    # pvalue for all untransformed, row 2 for untransformed and column 3 for pvalue
+    null_ptransform_pvalue = ptransform_summary$tests[2,3]
+
     statistics = list(
         "dataset"=superset_stats[["dataset"]],
         "k_fold"=superset_stats[["k_fold"]],
         "response_mean"=superset_stats[["response_mean"]],
         "response_sd"=superset_stats[["response_sd"]],
-        "num_training_samples"=superset_stats[["num_training_samples"]],
-        "superset_num_coefficients"=superset_stats[["num_coefficients"]],
-        "subset_predictors"=subset_stats[["predictors"]],
-        "superset_predictors"=superset_stats[["predictors"]],
+        "num_training_samples"=n,
+        "superset_num_coefficients"=super_p,
+        "superset_predictor_matrix"=superset_stats[["predictors"]],
         "added_predictor"=added_predictor,
-        "predictor_coefficient"=predictor_coefficient,
-        "predictor_pvalue"=predictor_pvalue,
-        "anova_pvalue"=anova_pvalue,
+        "added_predictor_coefficient"=predictor_coefficient,
+        "added_predictor_pvalue"=predictor_pvalue,
+        "superset_anova_pvalue"=anova_pvalue,
         "superset_mse"= superset_stats[["mse"]],
         "superset_test_sd"= superset_stats[["test_sd"]],
-        "mse_diff"=subset_stats[["mse"]] - superset_stats[["mse"]],
-        "mse_ratio"=subset_stats[["mse"]] / superset_stats[["mse"]],
-        "std_mse_diff"=subset_stats[["std_mse"]] - superset_stats[["std_mse"]],
-        "std_mse_ratio"=subset_stats[["std_mse"]] / superset_stats[["std_mse"]],
+        "mse_diff"=superset_stats[["mse"]] - subset_stats[["mse"]],
+        "mse_ratio"=superset_stats[["mse"]] / subset_stats[["mse"]],
+        "std_mse_diff"=superset_stats[["std_mse"]] - subset_stats[["std_mse"]],
+        "std_mse_ratio"=superset_stats[["std_mse"]] / subset_stats[["std_mse"]],
         "superset_r_sq"=superset_stats[["r_sq"]],
         "superset_r_sq_adj"=superset_stats[["r_sq_adj"]],
         "r_sq_diff"=superset_stats[["r_sq"]] - subset_stats[["r_sq"]],
         "r_sq_ratio"=superset_stats[["r_sq"]] / subset_stats[["r_sq"]],
         "r_sq_adj_diff"=superset_stats[["r_sq_adj"]] - subset_stats[["r_sq_adj"]],
-        "r_sq_adj_ratio"=superset_stats[["r_sq_adj"]] / subset_stats[["r_sq_adj"]]
-
-        # TODO: AIC, BIC, power transform, VIF (needs "car" package)
+        "r_sq_adj_ratio"=superset_stats[["r_sq_adj"]] / subset_stats[["r_sq_adj"]],
+        "aic_diff"=super_AIC - sub_AIC,
+        "aic_ratio"=super_AIC / sub_AIC,
+        "aic_corrected_diff"=super_AIC_cor - sub_AIC_cor,
+        "aic_corrected_ratio"=super_AIC_cor / sub_AIC_cor,
+        "bic_diff"=super_BIC - sub_BIC,
+        "bic_ratio"=super_BIC / sub_BIC,
+        "superset_normality_pvalue"=super_normality_pvalue,
+        "normality_pvalue_diff"=super_normality_pvalue - sub_normality_pvalue,
+        "normality_pvalue_ratio"=super_normality_pvalue / sub_normality_pvalue,
+        "added_predictor_vif"=added_predictor_vif,
+        "mean_vif"=mean(vifs),
+        "max_vif"=max(vifs),
+        "null_ptransform_pvalue"=null_ptransform_pvalue,
+        "response_est_ptransform"=response_est_ptransform,
+        "added_predictor_est_ptransform"=added_predictor_est_ptransform
         )
 
     return(statistics)
+}
+
+aic_correction = function(aic, n, p) {
+    return(aic + 2*(p + 2)*(p + 3) / (n - p - 1))
 }
 
 # loads each file and generates linear models as data to input into meta model

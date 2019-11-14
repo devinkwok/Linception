@@ -1,3 +1,10 @@
+# packrat library directory
+packrat/lib/**
+packrat/lib-ext/**
+packrat/lib-R/**
+packrat/src/**
+
+
 # Google drive sync file
 **/desktop.ini
 
@@ -37,3 +44,4 @@ vignettes/*.pdf
 
 # Shiny token, see https://shiny.rstudio.com/articles/shinyapps.html
 rsconnect/
+packrat/lib*/

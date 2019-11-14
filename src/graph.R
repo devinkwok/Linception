@@ -19,24 +19,20 @@ create_pgraph = function(num_predictors) {
     predictor_matrix = combination_matrix(num_predictors)
 
     # add vertex for every combination of predictors
-    for (i in 1:length(predictor_matrix[,1])) {
-        predictors = unlist(predictor_matrix[i,])
-        # need to wrap the vector in an object (list) otherwise it breaks
-        # because R data type coercion is ridiculous
-        graph = add_vertices(graph, 1, "predictors"=list(predictors), "lm_data"=list(0))
+    num_vertices = length(predictor_matrix[,1])
+    graph = add_vertices(graph, num_vertices)
+    for (i in 1:num_vertices) {
+        graph = set_vertex_predictors(graph, i, predictor_matrix[i,])
     }
 
     # add edges by checking every other vertex with one extra predictor
-    vertices = list_pgraph_vertices(graph)
-    num_vertices = length(vertices)
-
     for (i in 1:num_vertices) {
-        v1_predictors = get_vertex_predictors(vertices[i])
+        v1_predictors = get_vertex_predictors(V(graph)[i])
         
         num_predictors = sum(v1_predictors)
         
         for (j in 1:num_vertices) {
-            v2_predictors = get_vertex_predictors(vertices[j])
+            v2_predictors = get_vertex_predictors(V(graph)[j])
 
             # check that vertices[j] has exactly one extra predictor
             # so edges are only added once per pair from one direction
@@ -60,11 +56,6 @@ prune_pgraph = function(graph, max_vertices=NULL, max_edges=NULL) {
     return(graph)
 }
 
-# returns a list of all vertices in the graph (wrapper)
-list_pgraph_vertices = function(graph) {
-    return(V(graph))
-}
-
 num_edges = function(graph) {
     return(length(E(graph)))
 }
@@ -74,14 +65,17 @@ list_pgraph_edges = function(graph) {
     return(as_edgelist(graph))
 }
 
+set_vertex_predictors = function(graph, index, predictors) {
+    predictors = unlist(predictors)
+    # need to wrap the vector in an object (list) otherwise it breaks
+    # because R data type coercion is ridiculous
+    return(set_vertex_attr(graph, "predictors", index, list(predictors)))
+}
+
 # gets the predictors as a vector of 0 and 1 (1 means included)
 get_vertex_predictors = function(vertex) {
     # predictors are stored as a vector in a list,
     # need to unwrap to use it
-
-    # TODO: there is a bizare bug where removing this print statement
-    # will break sometimes, but not all the time
-    print(vertex)
     return(vertex$predictors[[1]])
 }
 

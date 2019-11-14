@@ -8,12 +8,17 @@ Project partner Kevin Wong.
 
 Requirements
 ------------
-* CRAN package `car`
-* CRAN package `igraph`
+* r-base-dev for `packrat`
+* CRAN package `packrat` for managing package dependencies
+* CRAN package `car` for VIF and power transform
+* CRAN package `igraph` for graph data structure
 
 How to use
 ----------
-1. Add datasets into `datasets/`. Each dataset should be a `.csv` file readable
+1. Open an interactive R prompt in the project root directory. `packrat` should
+boostrap install itself. Run `packrat::restore()` to automatically install
+the other required libraries.
+2. Add datasets into `datasets/`. Each dataset should be a `.csv` file readable
 by the R function `read.table()`. Choose one column as the response variable and
 prefix the column name with `RESPONSE_VARIABLEx`.
 Any column names prefixed with `"NULL_PREDICTORx"` are ignored.
@@ -24,9 +29,10 @@ Example:
 "1" 107 1687 867 269 9059 0.102971811805368 12 0
 "2" 97 1508 825 265 7685 0.102362995884646 6 0
 ```
-2. From the project root directory, run `Rscript src/main.R`.
+3. From the project root directory, run `Rscript src/main.R`.
 This calls `generate_meta_data()` and outputs `.csv`
 files containing linear models and their statistics to `outputs/`.
+Every paired statistic is of the form `superset - subset` or `superset/subset`.
 
 
 Overview
