@@ -1,10 +1,10 @@
 # functions for building dataset for meta-model
 # work in parent folder to access folders like datasets and lib
 
-# need library for VIF and power transform functions
+# need car library for VIF and power transform functions
 library("car")
 
-
+# include other files in the project
 source(file.path("src", "util.R"))
 source(file.path("src", "graph.R"))
 
@@ -260,25 +260,25 @@ get_paired_stats = function(subset_lm, superset_lm, subset_ptransform,
         "superset_anova_pvalue"=anova_pvalue,
         "superset_mse"= superset_stats[["mse"]],
         "superset_test_sd"= superset_stats[["test_sd"]],
-        "mse_diff"=superset_stats[["mse"]] - subset_stats[["mse"]],
-        "mse_ratio"=superset_stats[["mse"]] / subset_stats[["mse"]],
-        "std_mse_diff"=superset_stats[["std_mse"]] - subset_stats[["std_mse"]],
-        "std_mse_ratio"=superset_stats[["std_mse"]] / subset_stats[["std_mse"]],
+        "mse_diff"=subset_stats[["mse"]] - superset_stats[["mse"]],
+        "mse_ratio"=subset_stats[["mse"]] / superset_stats[["mse"]],
+        "std_mse_diff"=subset_stats[["std_mse"]] - superset_stats[["std_mse"]],
+        "std_mse_ratio"=subset_stats[["std_mse"]] / superset_stats[["std_mse"]],
         "superset_r_sq"=superset_stats[["r_sq"]],
         "superset_r_sq_adj"=superset_stats[["r_sq_adj"]],
-        "r_sq_diff"=superset_stats[["r_sq"]] - subset_stats[["r_sq"]],
-        "r_sq_ratio"=superset_stats[["r_sq"]] / subset_stats[["r_sq"]],
-        "r_sq_adj_diff"=superset_stats[["r_sq_adj"]] - subset_stats[["r_sq_adj"]],
-        "r_sq_adj_ratio"=superset_stats[["r_sq_adj"]] / subset_stats[["r_sq_adj"]],
-        "aic_diff"=super_AIC - sub_AIC,
-        "aic_ratio"=super_AIC / sub_AIC,
-        "aic_corrected_diff"=super_AIC_cor - sub_AIC_cor,
-        "aic_corrected_ratio"=super_AIC_cor / sub_AIC_cor,
-        "bic_diff"=super_BIC - sub_BIC,
-        "bic_ratio"=super_BIC / sub_BIC,
+        "r_sq_diff"=subset_stats[["r_sq"]] - superset_stats[["r_sq"]],
+        "r_sq_ratio"=subset_stats[["r_sq"]] / superset_stats[["r_sq"]],
+        "r_sq_adj_diff"=subset_stats[["r_sq_adj"]] - superset_stats[["r_sq_adj"]],
+        "r_sq_adj_ratio"=subset_stats[["r_sq_adj"]] / superset_stats[["r_sq_adj"]],
+        "aic_diff"=sub_AIC - super_AIC,
+        "aic_ratio"=sub_AIC / super_AIC,
+        "aic_corrected_diff"=sub_AIC_cor - super_AIC_cor,
+        "aic_corrected_ratio"=sub_AIC_cor / super_AIC_cor,
+        "bic_diff"=sub_BIC - super_BIC,
+        "bic_ratio"=sub_BIC / super_BIC,
         "superset_normality_pvalue"=super_normality_pvalue,
-        "normality_pvalue_diff"=super_normality_pvalue - sub_normality_pvalue,
-        "normality_pvalue_ratio"=super_normality_pvalue / sub_normality_pvalue,
+        "normality_pvalue_diff"=sub_normality_pvalue - super_normality_pvalue,
+        "normality_pvalue_ratio"=sub_normality_pvalue / super_normality_pvalue,
         "added_predictor_vif"=added_predictor_vif,
         "mean_vif"=mean(vifs),
         "max_vif"=max(vifs),
