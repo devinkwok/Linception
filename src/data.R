@@ -37,7 +37,6 @@ get_predictors_colnames = function(dataframe) {
 }
 
 # returns a vector of sizes of subsets
-# TODO test this
 get_subset_split = function(rows_per_train_set, num_subsets) {
     if (rows_per_train_set < MIN_TRAINING_SIZE + num_subsets) {
         logging_print("ERROR: not enough training observations to meet
@@ -51,7 +50,7 @@ get_subset_split = function(rows_per_train_set, num_subsets) {
     if (subset_proportion < MIN_SUBSET_PROPORTION) {
         subset_proportion = MIN_SUBSET_PROPORTION
     }
-    subsets = list() # TODO check this
+    subsets = list()
     subsets[[1]] = rows_per_train_set
     if (num_subsets > 1) {
         for (i in 2:num_subsets) {
@@ -70,6 +69,7 @@ get_subset_split = function(rows_per_train_set, num_subsets) {
 # by repeated multiplication by subset_proportion:
 # for example, if subset_proportion = 0.5 and there are 1000 training 
 # observations, then it creates subsets of 1000, 500, 250, 125, etc.
+# TODO: if num_folds == 1, then return just the data, and a single sample for testing
 k_fold_split = function(dataframe, num_folds, num_subsets) {
     num_rows = nrow(dataframe)
     rows_per_fold = floor(num_rows / num_folds)
@@ -186,6 +186,8 @@ fit_linear_models = function(data_index, dataframe, num_folds, num_subsets) {
             added_predictor_index = get_edge_added_predictor_index(graph, edge)
             added_predictor = predictors[[added_predictor_index]]
 
+            # pull objects out of the various lists that temporariliy store them
+            # because R is a mess
             sub_index = get_list_of_lists_index(per_fold_outputs, "predictors", subset)
             super_index = get_list_of_lists_index(per_fold_outputs, "predictors", superset)
             sub_lm = model_bank[[sub_index]]
@@ -195,6 +197,7 @@ fit_linear_models = function(data_index, dataframe, num_folds, num_subsets) {
             sub_data = get_list_of_lists_row(per_fold_outputs, sub_index)
             super_data = get_list_of_lists_row(per_fold_outputs, super_index)
 
+            # get stats for the model pair along this edge
             paired_stats = get_paired_stats(sub_lm, super_lm, sub_ptransform,
                     super_ptransform, sub_data, super_data, added_predictor)
             pairwise_data = append_list_of_lists_rows(pairwise_data, paired_stats)
@@ -220,7 +223,7 @@ test_lm = function(linear_model, test_data) {
         "mse"=mse,
         "std_mse"=mse / sd_response,
         "std_mse_sqrt"=sqrt(mse / sd_response)
-        ) # can add more columns here as needed
+        )
     
     return(test_results)
 }
@@ -230,12 +233,10 @@ get_individual_stats = function(linear_model) {
     summary_obj = summary(linear_model)
 
     statistics = list(
-        # could use summary_obj$df instead
         "num_training_samples"=(linear_model$df.residual + linear_model$rank),
         "num_coefficients"=linear_model$rank,
         "r_sq"=summary_obj$r.squared,
         "r_sq_adj"=summary_obj$adj.r.squared
-        # VIF needs package
         )
 
     return(statistics)
