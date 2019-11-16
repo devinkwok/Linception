@@ -157,7 +157,7 @@ is_valid_data = function(dataframe, requires=DEFAULT_REQUIRES) {
     num_rows = nrow(dataframe)
     if (num_rows < requires$MIN_ROWS
             ||  num_rows > requires$MAX_ROWS) {
-        logging_print("ERROR: invalid number of samples", num_rows)
+        logging_print("ERROR: invalid number of observations", num_rows)
         return(FALSE)
     }
 

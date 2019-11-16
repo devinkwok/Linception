@@ -10,6 +10,11 @@ source(file.path("src", "graph.R"))
 
 # seed rng generator to get consistent results
 RANDOM_SEED = 001
+# lower bound for how many observations to fit lm
+# NOTE: powerTransform breaks when sample size is too small for some datasets
+MIN_TRAINING_SIZE = 100
+# lower bound for how much smaller a subset can be
+MIN_SUBSET_PROPORTION = 0.5
 
 # traceback errors for debugging
 options(error=function()traceback(2))
@@ -31,31 +36,81 @@ get_predictors_colnames = function(dataframe) {
     return(columns[-1]) # this removes column 1 from the list
 }
 
-k_fold_split = function(dataframe, num_folds) {
+# returns a vector of sizes of subsets
+# TODO test this
+get_subset_split = function(rows_per_train_set, num_subsets) {
+    if (rows_per_train_set < MIN_TRAINING_SIZE + num_subsets) {
+        logging_print("ERROR: not enough training observations to meet
+                minimum plus num_subsets", MIN_TRAINING_SIZE, num_subsets)
+        return(NULL)
+    }
+
+    # get subset_proportion as even geometric division from rows_per_train_set to MIN_TRAINING_SIZE
+    subset_range = rows_per_train_set / MIN_TRAINING_SIZE
+    subset_proportion =  1 / subset_range^(1 / num_subsets)
+    if (subset_proportion < MIN_SUBSET_PROPORTION) {
+        subset_proportion = MIN_SUBSET_PROPORTION
+    }
+    subsets = list() # TODO check this
+    subsets[[1]] = rows_per_train_set
+    if (num_subsets > 1) {
+        for (i in 2:num_subsets) {
+            superset_obs = subsets[[i-1]]
+            num_obs = round(superset_obs * subset_proportion)
+            if (num_obs >= superset_obs) {
+                num_obs = superset_obs - 1
+            }
+            subsets[[i]] = num_obs
+        }
+    }
+    return(subsets)
+}
+
+# splits into k folds but also into subsets with less observations
+# by repeated multiplication by subset_proportion:
+# for example, if subset_proportion = 0.5 and there are 1000 training 
+# observations, then it creates subsets of 1000, 500, 250, 125, etc.
+k_fold_split = function(dataframe, num_folds, num_subsets) {
+    num_rows = nrow(dataframe)
+    rows_per_fold = floor(num_rows / num_folds)
+    rows_per_train_set = rows_per_fold * (num_folds - 1)
+    subset_splits = get_subset_split(rows_per_train_set, num_subsets)
+
     train_sets = vector("list", num_folds)
     test_sets = vector("list", num_folds)
     fold_num = vector("integer", num_folds)
 
-    rows = nrow(dataframe)
-    min_rows_per_fold = floor(rows / num_folds)
-    fold_id = rep(1:num_folds, min_rows_per_fold)
+    fold_id = rep(1:num_folds, rows_per_fold)
 
+    # TODO; put remainder in test set using index remainder_id
+    # for now just remove them lol
+    # that way every training set is the same size
+    remainder = num_rows %% num_folds
     # add in remainder to match with number of rows ONLY if remainder nonzero
-    remainder = rows %% num_folds
-    if (remainder > 0) {
-        fold_id = c(fold_id, 1:remainder)
-    }
+    # remainder_id = num_folds + 1
+    # if (remainder > 0) {
+    #     fold_id = c(fold_id, rep(remainder_id, remainder))
+    # }
 
     # randomize selection of folds
     set.seed(RANDOM_SEED) # make output consistent
     fold_id = sample(fold_id) # this permutes the ids
 
+    j = 1 # index variable
     for (i in 1:num_folds) {
+
         # train: select from dataframe where fold != i
-        train_sets[[i]] = dataframe[fold_id != i,]
+        train_superset = dataframe[fold_id != i,]
         # test: select from dataframe where fold == i
-        test_sets[[i]] = dataframe[fold_id == i,]
-        fold_num[[i]] = i
+        test_set = dataframe[fold_id == i,]
+
+        for (num_observations in subset_splits) {
+            # split data into smaller subsets of observations
+            train_sets[[j]] = train_superset[1:num_observations,]
+            test_sets[[j]] = test_set
+            fold_num[[j]] = i
+            j = j + 1
+        }
     }
 
     k_folds = list(
@@ -63,12 +118,12 @@ k_fold_split = function(dataframe, num_folds) {
         "test"=test_sets,
         "fold_num"=fold_num
         )
-    
+
     return(k_folds)
 }
 
 # fits linear models for every combination of parameters to a dataset
-fit_linear_models = function(data_index, dataframe, num_folds) {
+fit_linear_models = function(data_index, dataframe, num_folds, num_subsets) {
     response_name = get_response_colname(dataframe)
     predictors = get_predictors_colnames(dataframe)
 
@@ -77,8 +132,7 @@ fit_linear_models = function(data_index, dataframe, num_folds) {
     vertices = V(graph)
 
     # assign data in data frame to k-folds
-    # TODO: split data into smaller numbers of observations
-    data_folds = k_fold_split(dataframe, num_folds)
+    data_folds = k_fold_split(dataframe, num_folds, num_subsets)
 
     individual_data = NULL
     pairwise_data = NULL
@@ -86,7 +140,7 @@ fit_linear_models = function(data_index, dataframe, num_folds) {
     # iterate through vertices of graph and k-folds for each model
     # iterate through folds first so that the inner loop fills the
     # graph, then builds the edges
-    for (i in 1:num_folds) {
+    for (i in 1:length(data_folds[["train"]])) {
 
         train_data = data_folds[["train"]][[i]]
         test_data = data_folds[["test"]][[i]]
@@ -295,7 +349,9 @@ aic_correction = function(aic, n, p) {
 }
 
 # loads each file and generates linear models as data to input into meta model
-generate_meta_data = function(num_folds, max_datasets, data_path, output_path, ext) {
+generate_meta_data = function(num_folds, num_subsets,
+            max_datasets, data_path, output_path, ext) {
+
     # get files
     filenames = list_data_filenames(data_path, ext)
     filenames = filenames[1:max_datasets]  # truncate
@@ -312,7 +368,7 @@ generate_meta_data = function(num_folds, max_datasets, data_path, output_path, e
         }
         else {
             logging_print("Generating linear models for dataset:", name)
-            models_and_data = fit_linear_models(i, dataset, num_folds)
+            models_and_data = fit_linear_models(i, dataset, num_folds, num_subsets)
             individual_data = append_list_of_lists_rows(individual_data, models_and_data[["individual"]])
             paired_data = append_list_of_lists_rows(paired_data, models_and_data[["paired"]])
         }
