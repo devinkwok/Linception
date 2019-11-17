@@ -25,13 +25,14 @@ options(error=function()traceback(2))
 # initialize variable as NULL to let the functions filling the
 # lists determine the columns
 
-# ASSUMPTION: the first named column is the response variable
+# ASSUMPTION: first column is response
 get_response_colname = function(dataframe) {
     columns = colnames(dataframe)
     return(columns[1])
 }
 
-get_predictors_colnames = function(dataframe) {
+# ASSUMPTION: first column is response
+get_predictor_colnames = function(dataframe) {
     columns = colnames(dataframe)
     return(columns[-1]) # this removes column 1 from the list
 }
@@ -69,47 +70,57 @@ get_subset_split = function(rows_per_train_set, num_subsets) {
 # by repeated multiplication by subset_proportion:
 # for example, if subset_proportion = 0.5 and there are 1000 training 
 # observations, then it creates subsets of 1000, 500, 250, 125, etc.
-# TODO: if num_folds == 1, then return just the data, and a single sample for testing
+# TODO: 
 k_fold_split = function(dataframe, num_folds, num_subsets) {
-    num_rows = nrow(dataframe)
-    rows_per_fold = floor(num_rows / num_folds)
-    rows_per_train_set = rows_per_fold * (num_folds - 1)
-    subset_splits = get_subset_split(rows_per_train_set, num_subsets)
-
     train_sets = vector("list", num_folds)
     test_sets = vector("list", num_folds)
     fold_num = vector("integer", num_folds)
 
-    fold_id = rep(1:num_folds, rows_per_fold)
+    num_rows = nrow(dataframe)
+    # if num_folds == 1, then the whole dataset will be used for training
+    if (num_folds == 1) {
+        train_sets[[1]] = dataframe
+        # test set is meaningless - only put a single sample so test code doesn't break
+        test_sets[[1]] = dataframe[1,]
+        fold_num[[1]] = 1
+    }
+    else {
+        rows_per_fold = floor(num_rows / num_folds)
+        rows_per_train_set = rows_per_fold * (num_folds - 1)
+        # otherwise split into subsets
+        subset_splits = get_subset_split(rows_per_train_set, num_subsets)
 
-    # TODO; put remainder in test set using index remainder_id
-    # for now just remove them lol
-    # that way every training set is the same size
-    remainder = num_rows %% num_folds
-    # add in remainder to match with number of rows ONLY if remainder nonzero
-    # remainder_id = num_folds + 1
-    # if (remainder > 0) {
-    #     fold_id = c(fold_id, rep(remainder_id, remainder))
-    # }
+        fold_id = rep(1:num_folds, rows_per_fold)
 
-    # randomize selection of folds
-    set.seed(RANDOM_SEED) # make output consistent
-    fold_id = sample(fold_id) # this permutes the ids
+        # TODO; put remainder in test set using index remainder_id
+        # for now just remove them lol
+        # that way every training set is the same size
+        remainder = num_rows %% num_folds
+        # add in remainder to match with number of rows ONLY if remainder nonzero
+        # remainder_id = num_folds + 1
+        # if (remainder > 0) {
+        #     fold_id = c(fold_id, rep(remainder_id, remainder))
+        # }
 
-    j = 1 # index variable
-    for (i in 1:num_folds) {
+        # randomize selection of folds
+        set.seed(RANDOM_SEED) # make output consistent
+        fold_id = sample(fold_id) # this permutes the ids
 
-        # train: select from dataframe where fold != i
-        train_superset = dataframe[fold_id != i,]
-        # test: select from dataframe where fold == i
-        test_set = dataframe[fold_id == i,]
+        j = 1 # index variable
+        for (i in 1:num_folds) {
 
-        for (num_observations in subset_splits) {
-            # split data into smaller subsets of observations
-            train_sets[[j]] = train_superset[1:num_observations,]
-            test_sets[[j]] = test_set
-            fold_num[[j]] = i
-            j = j + 1
+            # train: select from dataframe where fold != i
+            train_superset = dataframe[fold_id != i,]
+            # test: select from dataframe where fold == i
+            test_set = dataframe[fold_id == i,]
+
+            for (num_observations in subset_splits) {
+                # split data into smaller subsets of observations
+                train_sets[[j]] = train_superset[1:num_observations,]
+                test_sets[[j]] = test_set
+                fold_num[[j]] = i
+                j = j + 1
+            }
         }
     }
 
@@ -125,7 +136,7 @@ k_fold_split = function(dataframe, num_folds, num_subsets) {
 # fits linear models for every combination of parameters to a dataset
 fit_linear_models = function(data_index, dataframe, num_folds, num_subsets) {
     response_name = get_response_colname(dataframe)
-    predictors = get_predictors_colnames(dataframe)
+    predictors = get_predictor_colnames(dataframe)
 
     #create a graph of the predictors and get a list of vertices
     graph = create_pgraph(length(predictors))
@@ -165,7 +176,7 @@ fit_linear_models = function(data_index, dataframe, num_folds, num_subsets) {
                 "dataset"=data_index,
                 "response_mean"=mean(response_var),
                 "response_sd"=sd(response_var),
-                "predictors"=predictor_str(vertex),
+                "predictors"=vertex_to_str(vertex),
                 "k_fold"=data_folds[["fold_num"]][[i]]
                 )
 
@@ -181,8 +192,8 @@ fit_linear_models = function(data_index, dataframe, num_folds, num_subsets) {
         edges = list_pgraph_edges(graph)
         for (k in 1:num_edges(graph)) {
             edge = edges[k,]
-            subset = predictor_str(get_edge_subset(graph, edge))
-            superset = predictor_str(get_edge_superset(graph, edge))
+            subset = vertex_to_str(get_edge_subset(graph, edge))
+            superset = vertex_to_str(get_edge_superset(graph, edge))
             added_predictor_index = get_edge_added_predictor_index(graph, edge)
             added_predictor = predictors[[added_predictor_index]]
 
@@ -244,7 +255,7 @@ get_individual_stats = function(linear_model) {
 
 get_power_transform = function(dataset, predictor_matrix) {
     response = get_response_colname(dataset)
-    predictors = get_predictors_colnames(dataset)
+    predictors = get_predictor_colnames(dataset)
     matrix = cbind(dataset[response])
     for (i in 1:length(predictors)) {
         if (predictor_matrix[i] == 1) {
@@ -254,6 +265,10 @@ get_power_transform = function(dataset, predictor_matrix) {
         }
     }
     return(powerTransform(matrix))
+}
+
+aic_correction = function(aic, n, p) {
+    return(aic + 2*(p + 2)*(p + 3) / (n - p - 1))
 }
 
 # all stats are of the form superset - subset or superset/subset
@@ -345,10 +360,6 @@ get_paired_stats = function(subset_lm, superset_lm, subset_ptransform,
     return(statistics)
 }
 
-aic_correction = function(aic, n, p) {
-    return(aic + 2*(p + 2)*(p + 3) / (n - p - 1))
-}
-
 # loads each file and generates linear models as data to input into meta model
 generate_meta_data = function(num_folds, num_subsets,
             max_datasets, data_path, output_path, ext) {
@@ -363,7 +374,8 @@ generate_meta_data = function(num_folds, num_subsets,
     # generate data
     for (i in 1:length(filenames)) {
         name = filenames[i]
-        dataset = load_dataframe(file.path(data_path, name))
+        # need to normalize because powerTransform can't take negative or zero values
+        dataset = load_dataframe(file.path(data_path, name), normalize=TRUE)
         if (is.null(dataset)) {
             logging_print("WARNING: dataset not loaded", name)
         }
@@ -375,10 +387,8 @@ generate_meta_data = function(num_folds, num_subsets,
         }
     }
 
-    # remove column with linear models from output since they are objects
-    excluded_columns = list("lm"=TRUE)
-    individual_df = make_data_frame(individual_data, excluded_columns)
-    paired_df = make_data_frame(paired_data, excluded_columns)
+    individual_df = make_data_frame(individual_data)
+    paired_df = make_data_frame(paired_data)
 
     # save results to file
     logging_print("Generated paired and individual lm data with number of rows, head:",

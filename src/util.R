@@ -2,6 +2,20 @@
 # and manipulating list of lists
 
 # conditions for dataset to satisfy
+NO_LIMIT_REQUIRES = list(
+    "TYPEOF" = "data.frame",
+    "MIN_RESPONSE" = 1,
+    "MAX_RESPONSE" = 1,
+    "MIN_COLS" = 1,
+    "MAX_COLS" = Inf,
+    "MIN_ROWS" = 1,
+    "MAX_ROWS" = Inf,
+
+    # escape all R and regex reserved characters in prefixes
+    "RESPONSE_VAR_PREFIX" = "RESPONSE_VARIABLEx",
+    "NULL_PREDICTOR_PREFIX" = "NULL_PREDICTORx"
+)
+
 DEFAULT_REQUIRES = list(
     "TYPEOF" = "data.frame",
     "MIN_RESPONSE" = 1,
@@ -175,7 +189,7 @@ is_valid_data = function(dataframe, requires=DEFAULT_REQUIRES) {
     return(TRUE)
 }
 
-load_dataframe = function(filename, requires=DEFAULT_REQUIRES) {
+load_dataframe = function(filename, requires=DEFAULT_REQUIRES, normalize=FALSE) {
     dataframe = read.table(filename)
 
     if (is_valid_data(dataframe, requires)) {
@@ -190,7 +204,9 @@ load_dataframe = function(filename, requires=DEFAULT_REQUIRES) {
         dataframe = dataframe[indexes]
 
         # normalize so there are no negative values
-        dataframe = normalize_dataframe(dataframe)
+        if (normalize) {
+            dataframe = normalize_dataframe(dataframe)
+        }
 
         return(dataframe)
     }
@@ -205,7 +221,7 @@ save_dataframe = function(dataframe, name, path) {
 }
 
 # excluded_columns is a named list, if the item is not null the column is excluded
-make_data_frame = function(list_of_lists, excluded_columns) {
+make_data_frame = function(list_of_lists, excluded_columns=list()) {
     col_names = names(list_of_lists)
     num_cols = length(col_names)
     dataframe = NULL # otherwise dataframe has 0 rows and won't append

@@ -1,5 +1,7 @@
 library("igraph")
 
+source(file.path("src", "util.R"))
+
 # create predictor graph from predictor_names
 #
 # each vertex describes a certain subset of predictors
@@ -11,8 +13,10 @@ library("igraph")
 # ASSUMPTION: by convention edges are added from subset to superset
 # that is, smaller model pointing to larger model, but the graph
 # itself is bidirectional
+#
+# the first vertex of the graph is the null lm with no predictors
 create_pgraph = function(num_predictors) {
-    graph = make_empty_graph(n=0, directed=FALSE)
+    graph = make_empty_graph(n=0, directed=TRUE)
     # use a matrix of 0 and 1 to indication inclusion/exclusion of predictor
     # rows are for different linear models
     # columns are the inclusion/exclusion of that column in the dataframe
@@ -46,6 +50,22 @@ create_pgraph = function(num_predictors) {
         }
     }
     return(prune_pgraph(graph))
+}
+
+get_null_model_vertex = function(graph) {
+    return(V(graph)[0])
+}
+
+get_full_model_vertex = function(graph) {
+    return(tail(V(graph), n=1))
+}
+
+forward_step_vertices = function(graph, vertex) {
+    return(neighbors(graph, vertex, mode="out"))
+}
+
+backward_step_vertices = function(graph, vertex) {
+    return(neighbors(graph, vertex, mode="in"))
 }
 
 # if there are too many predictors it is better to stochastically
@@ -146,6 +166,15 @@ combination_matrix = function(size) {
     return(expand.grid(rep(list(c(0:1)), size)))
 }
 
-predictor_str = function(vertex) {
-    return(paste(get_vertex_predictors(vertex), collapse=""))
+vertex_to_str = function(vertex) {
+    string = paste(get_vertex_predictors(vertex), collapse="")
+    string = gsub("0", "F", string)
+    string = gsub("1", "T", string)
+    return(string)
+}
+
+predictor_str_to_matrix = function(predictor_str) {
+    string = gsub("F", "0", predictor_str)
+    string = gsub("T", "1", string)
+    return(as.numeric(strsplit(string, "")[[1]]))
 }

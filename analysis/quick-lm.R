@@ -1,5 +1,5 @@
 # if you load the file lm-data-paired-ordering-fixed.csv it should have no infinite values caused by division by 0
-df = read.table("lm-data-paired-ordering-fixed.csv")
+df = read.table("analysis/lm-data-paired-test.csv")
 
 summary(df)
 
@@ -30,6 +30,8 @@ shapiro.test(lm2$residuals)
 n = 10
 for (i in 1:max(df$NULL_PREDICTORxdataset)) {
     subset_by_dataset = df[df$NULL_PREDICTORxdataset == i,]
-    indexes = order(subset_by_dataset$RESPONSE_VARIABLExstd_mse_diff)
-    print(df[indexes[1:n],]$NULL_PREDICTORxsuperset_predictor_matrix)
+    indexes = order(subset_by_dataset$NULL_PREDICTORxsuperset_mse)
+    print(df[indexes[1:n],"NULL_PREDICTORxsuperset_predictor_matrix"])
 }
+
+min(df[df$NULL_PREDICTORxdataset == 5,]$NULL_PREDICTORxsuperset_mse)

@@ -25,7 +25,7 @@ Any column names prefixed with `"NULL_PREDICTORx"` are ignored.
 Currently, categorical variables are not supported.
 Example:
 ```
-"!response-variable!DriversKilled" "drivers" "front" "rear" "kms" "PetrolPrice" "NULL_PREDICTORxlaw"
+"RESPONSE_VARIABLExDriversKilled" "drivers" "front" "rear" "kms" "PetrolPrice" "NULL_PREDICTORxlaw"
 "1" 107 1687 867 269 9059 0.102971811805368 12 0
 "2" 97 1508 825 265 7685 0.102362995884646 6 0
 ```
