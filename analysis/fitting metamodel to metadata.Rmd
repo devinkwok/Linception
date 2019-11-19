@@ -1,0 +1,215 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library(car)
+library(leaps)
+library(readr)
+```
+
+```{r}
+lm.data.paired.tagged <- read.csv("C:/Users/Kevin/Desktop/STAT 429/Project stuff/lm-data-paired-tagged.csv", sep="")
+project <- lm.data.paired.tagged
+# r_sq_ratio has infinite values due to division by 0, take the inverse
+project$r_sq_ratio <- 1/(project$r_sq_ratio)
+project$r_sq_adj_ratio = 1/project$r_sq_adj_ratio
+attach(project)
+summary(project)
+```
+
+```{r}
+names(project)
+```
+
+```{r}
+preliminary_lm1 <- lm(RESPONSE_VARIABLExstd_mse_diff~NULL_PREDICTORxdataset)
+summary(preliminary_lm1)
+par(mfrow=c(2,2))
+plot(preliminary_lm1)
+
+boxplot(RESPONSE_VARIABLExstd_mse_diff~NULL_PREDICTORxdataset)
+```
+
+## RESPONSE_VARIABLExstd_mse_diff
+```{r}
+test_responses_model1 <- lm("RESPONSE_VARIABLExstd_mse_diff~num_training_samples+superset_num_coefficients+added_predictor_coefficient+added_predictor_pvalue+superset_anova_pvalue+superset_r_sq+superset_r_sq_adj+r_sq_diff+r_sq_ratio+r_sq_adj_diff+r_sq_adj_ratio+aic_diff+aic_ratio+aic_corrected_diff+aic_corrected_ratio+bic_diff+bic_ratio+superset_normality_pvalue+normality_pvalue_diff+normality_pvalue_ratio+added_predictor_vif+mean_vif+max_vif+null_ptransform_pvalue+response_est_ptransform+added_predictor_est_ptransform", data=data)
+
+summary(test_responses_model1)
+par(mfrow=c(2,2))
+plot(test_responses_model1)
+```
+
+## NULL_PREDICTORxmse_diff
+```{r}
+test_responses_model2 <- lm("NULL_PREDICTORxmse_diff~num_training_samples+superset_num_coefficients+added_predictor_coefficient+added_predictor_pvalue+superset_anova_pvalue+superset_r_sq+superset_r_sq_adj+r_sq_diff+r_sq_ratio+r_sq_adj_diff+r_sq_adj_ratio+aic_diff+aic_ratio+aic_corrected_diff+aic_corrected_ratio+bic_diff+bic_ratio+superset_normality_pvalue+normality_pvalue_diff+normality_pvalue_ratio+added_predictor_vif+mean_vif+max_vif+null_ptransform_pvalue+response_est_ptransform+added_predictor_est_ptransform", data=project)
+
+summary(test_responses_model2)
+par(mfrow=c(2,2))
+plot(test_responses_model2)
+```
+
+## NULL_PREDICTORxmse_ratio
+```{r}
+test_responses_model3 <- lm("NULL_PREDICTORxmse_ratio~num_training_samples+superset_num_coefficients+added_predictor_coefficient+added_predictor_pvalue+superset_anova_pvalue+superset_r_sq+superset_r_sq_adj+r_sq_diff+r_sq_ratio+r_sq_adj_diff+r_sq_adj_ratio+aic_diff+aic_ratio+aic_corrected_diff+aic_corrected_ratio+bic_diff+bic_ratio+superset_normality_pvalue+normality_pvalue_diff+normality_pvalue_ratio+added_predictor_vif+mean_vif+max_vif+null_ptransform_pvalue+response_est_ptransform+added_predictor_est_ptransform", data=project)
+
+summary(test_responses_model3)
+par(mfrow=c(2,2))
+plot(test_responses_model3)
+```
+
+## NULL_PREDICTORxstd_mse_ratio
+```{r}
+## same results as mse_ratio response variable
+test_responses_model4 <- lm("NULL_PREDICTORxstd_mse_ratio~num_training_samples+superset_num_coefficients+added_predictor_coefficient+added_predictor_pvalue+superset_anova_pvalue+superset_r_sq+superset_r_sq_adj+r_sq_diff+r_sq_ratio+r_sq_adj_diff+r_sq_adj_ratio+aic_diff+aic_ratio+aic_corrected_diff+aic_corrected_ratio+bic_diff+bic_ratio+superset_normality_pvalue+normality_pvalue_diff+normality_pvalue_ratio+added_predictor_vif+mean_vif+max_vif+null_ptransform_pvalue+response_est_ptransform+added_predictor_est_ptransform", data=project)
+
+summary(test_responses_model4)
+par(mfrow=c(2,2))
+plot(test_responses_model4)
+```
+
+```{r}
+test_responses_model5 <- lm("NULL_PREDICTORxsuperset_mse~num_training_samples+superset_num_coefficients+superset_anova_pvalue+superset_r_sq+superset_r_sq_adj+r_sq_diff+r_sq_ratio+r_sq_adj_diff+r_sq_adj_ratio+aic_diff+aic_ratio+bic_diff+bic_ratio+superset_normality_pvalue+normality_pvalue_diff+normality_pvalue_ratio+added_predictor_vif+mean_vif+max_vif+null_ptransform_pvalue+response_est_ptransform+added_predictor_est_ptransform", data=project)
+
+summary(test_responses_model5)
+par(mfrow=c(2,2))
+plot(test_responses_model5)
+```
+```{r}
+supersetmse_sig <- lm("NULL_PREDICTORxsuperset_mse~num_training_samples+superset_r_sq_adj+r_sq_ratio+r_sq_adj_diff+aic_diff+bic_diff+superset_normality_pvalue+mean_vif+null_ptransform_pvalue+response_est_ptransform+added_predictor_est_ptransform", data=project)
+summary(supersetmse_sig)
+par(mfrow=c(2,2))
+plot(supersetmse_sig)
+```
+
+## all possible subsets method on superset_mse response variable
+```{r}
+supersetmse_regsubset <- regsubsets(NULL_PREDICTORxsuperset_mse~superset_r_sq_adj+r_sq_ratio+r_sq_adj_diff+aic_diff+bic_diff+superset_normality_pvalue+mean_vif+null_ptransform_pvalue+response_est_ptransform+added_predictor_est_ptransform, data=project, nvmax = 25)
+supersetmse_regsubset_summary <- summary(supersetmse_regsubset)
+supersetmse_regsubset_summary
+
+which.max(supersetmse_regsubset_summary$adjr2)
+which.min(supersetmse_regsubset_summary$bic)
+which.min(supersetmse_regsubset_summary$cp)
+```
+
+```{r}
+supersetmse_10 <- lm(NULL_PREDICTORxsuperset_mse~superset_r_sq_adj+r_sq_ratio+r_sq_adj_diff+aic_diff+bic_diff+superset_normality_pvalue+mean_vif+null_ptransform_pvalue+response_est_ptransform+added_predictor_est_ptransform, data=project)
+summary(supersetmse_10)
+par(mfrow=c(2,2))
+plot(supersetmse_10)
+```
+## marginal model plots of supersetmse_10
+
+```{r}
+mmp(supersetmse_10)
+```
+
+```{r}
+vif(supersetmse_10)
+```
+
+## variable selection: backward selection method AIC
+```{r}
+n=nrow(project)
+backAIC <- step(supersetmse_10, direction="backward")
+```
+
+## variable selection: forward selection method for supersetmse
+
+```{r}
+#starting point for forward method
+supersetmse_m0 <- lm(NULL_PREDICTORxsuperset_mse~1)
+
+fowardAIC_supersetmse <- step(
+  supersetmse_m0,
+  scope = list(lower = ~1, upper = ~superset_r_sq_adj+r_sq_ratio+r_sq_adj_diff+aic_diff+bic_diff+superset_normality_pvalue+mean_vif+null_ptransform_pvalue+response_est_ptransform+added_predictor_est_ptransform),
+  direction = "forward"
+)
+```
+
+
+
+
+## full std_mse_diff linear model
+```{r}
+std_mse_diff_lm <- lm("RESPONSE_VARIABLExstd_mse_diff~num_training_samples+superset_num_coefficients+superset_anova_pvalue+superset_r_sq+superset_r_sq_adj+r_sq_diff+r_sq_ratio+r_sq_adj_diff+r_sq_adj_ratio+aic_diff+aic_ratio+bic_diff+bic_ratio+superset_normality_pvalue+normality_pvalue_diff+normality_pvalue_ratio+added_predictor_vif+mean_vif+max_vif+null_ptransform_pvalue+response_est_ptransform+added_predictor_est_ptransform", data=project)
+summary(std_mse_diff_lm)
+par(mfrow=c(2,2))
+plot(std_mse_diff_lm)
+```
+
+```{r}
+std_mse_diff_sig <- lm("RESPONSE_VARIABLExstd_mse_diff~num_training_samples+superset_anova_pvalue+r_sq_adj_diff+aic_diff+bic_diff+mean_vif+null_ptransform_pvalue+response_est_ptransform", data=project)
+summary(std_mse_diff_sig)
+par(mfrow=c(2,2))
+plot(std_mse_diff_sig)
+```
+
+## std_mse_diff variable selection
+```{r}
+std_mse_diff_regsubsets1 <- regsubsets(RESPONSE_VARIABLExstd_mse_diff~num_training_samples+superset_num_coefficients+superset_anova_pvalue+superset_r_sq+superset_r_sq_adj+r_sq_diff+r_sq_ratio+r_sq_adj_diff+r_sq_adj_ratio+aic_diff+aic_ratio+bic_diff+bic_ratio+superset_normality_pvalue+normality_pvalue_diff+normality_pvalue_ratio+added_predictor_vif+mean_vif+max_vif+null_ptransform_pvalue+response_est_ptransform+added_predictor_est_ptransform, data=project, nvmax=25)
+
+std_mse_diff_regsubsets1_summary <- summary(std_mse_diff_regsubsets1)
+std_mse_diff_regsubsets1_summary
+which.max(std_mse_diff_regsubsets1$adjr2)
+which.min(std_mse_diff_regsubsets1$bic)
+which.min(std_mse_diff_regsubsets1$cp)
+
+std_mse_diff_regsubsets2 <- regsubsets(RESPONSE_VARIABLExstd_mse_diff~num_training_samples+superset_anova_pvalue+r_sq_adj_diff+aic_diff+bic_diff+mean_vif+null_ptransform_pvalue+response_est_ptransform, data=project, nvmax=15)
+
+std_mse_diff_regsubsets2_summary <- summary(std_mse_diff_regsubsets2)
+std_mse_diff_regsubsets2_summary
+which.max(std_mse_diff_regsubsets2$adjr2)
+which.min(std_mse_diff_regsubsets2$bic)
+which.min(std_mse_diff_regsubsets2$cp)
+```
+
+## superset_mse model #8 from variable selection
+```{r}
+stdmsediff_8 <- lm("RESPONSE_VARIABLExstd_mse_diff~num_training_samples+superset_anova_pvalue+r_sq_adj_diff+aic_diff+bic_diff+mean_vif+null_ptransform_pvalue+response_est_ptransform", data=project)
+par(mfrow=c(2,2))
+plot(stdmsediff_8)
+par(mfrow=c(1,2))
+mmp(stdmsediff_8)
+mmp(supersetmse_10)
+```
+
+## variable selection: forward selection method for std_mse_diff
+
+```{r}
+n=nrow(project)
+#starting point for forward method
+stdmsediff_m0 <- lm(RESPONSE_VARIABLExstd_mse_diff~1)
+
+fowardAIC_supersetmse <- step(
+  stdmsediff_m0,
+  scope = list(lower = ~1, upper = ~num_training_samples+superset_anova_pvalue+r_sq_adj_diff+aic_diff+bic_diff+mean_vif+null_ptransform_pvalue+response_est_ptransform),
+  direction = "forward",
+  k=log(n)
+)
+```
+
+## variable selection method: backAIC
+
+```{r}
+backAIC <- step(stdmsediff_8, direction = "backward")
+```
+
+```{r}
+vif(stdmsediff_8)
+```
+
+```{r}
+pairs(RESPONSE_VARIABLExstd_mse_diff~num_training_samples+superset_anova_pvalue+r_sq_adj_diff+aic_diff+bic_diff+mean_vif+null_ptransform_pvalue+response_est_ptransform, data=project, lower.panel=NULL)
+```
+
+```{r}
+testing <- data.frame(num_training_samples,superset_anova_pvalue,r_sq_adj_diff,aic_diff,bic_diff,mean_vif,null_ptransform_pvalue,response_est_ptransform)
+for (i in 1:length(testing)) {
+        boxplot(testing[,i], main=names(testing[i]), type="l")
+
+}
+```
+

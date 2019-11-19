@@ -70,7 +70,6 @@ get_subset_split = function(rows_per_train_set, num_subsets) {
 # by repeated multiplication by subset_proportion:
 # for example, if subset_proportion = 0.5 and there are 1000 training 
 # observations, then it creates subsets of 1000, 500, 250, 125, etc.
-# TODO: 
 k_fold_split = function(dataframe, num_folds, num_subsets) {
     train_sets = vector("list", num_folds)
     test_sets = vector("list", num_folds)
@@ -80,8 +79,8 @@ k_fold_split = function(dataframe, num_folds, num_subsets) {
     # if num_folds == 1, then the whole dataset will be used for training
     if (num_folds == 1) {
         train_sets[[1]] = dataframe
-        # test set is meaningless - only put a single sample so test code doesn't break
-        test_sets[[1]] = dataframe[1,]
+        # test set is meaningless - only put 2 samples so test code doesn't break
+        test_sets[[1]] = dataframe[1:2,]
         fold_num[[1]] = 1
     }
     else {
@@ -135,12 +134,13 @@ k_fold_split = function(dataframe, num_folds, num_subsets) {
 
 # fits linear models for every combination of parameters to a dataset
 fit_linear_models = function(data_index, dataframe, num_folds, num_subsets) {
-    response_name = get_response_colname(dataframe)
+
     predictors = get_predictor_colnames(dataframe)
 
     #create a graph of the predictors and get a list of vertices
     graph = create_pgraph(length(predictors))
     vertices = V(graph)
+    edges = list_pgraph_edges(graph)
 
     # assign data in data frame to k-folds
     data_folds = k_fold_split(dataframe, num_folds, num_subsets)
@@ -152,71 +152,97 @@ fit_linear_models = function(data_index, dataframe, num_folds, num_subsets) {
     # iterate through folds first so that the inner loop fills the
     # graph, then builds the edges
     for (i in 1:length(data_folds[["train"]])) {
-
+        logging_print("Training fold with number of models", i, length(vertices))
         train_data = data_folds[["train"]][[i]]
         test_data = data_folds[["test"]][[i]]
-        response_var = train_data[[response_name]]
-        per_fold_outputs = NULL
-        # need separate lists because R can't handle objects in lists!
-        model_bank = list()
-        ptransform_bank = list()
+        fold_index = data_folds[["fold_num"]][[i]]
 
-        for (j in 1:length(vertices)) {
-            vertex = vertices[j]
-            predictor_matrix = get_vertex_predictors(vertex)
-            formula_string = build_formula_string(predictor_matrix, response_name, predictors)
-
-            model = lm(formula=formula_string, data=train_data)
-            model_bank[[j]] = model
-
-            ptransform = get_power_transform(train_data, predictor_matrix)
-            ptransform_bank[[j]] = ptransform
-
-            model_data = list(
-                "dataset"=data_index,
-                "response_mean"=mean(response_var),
-                "response_sd"=sd(response_var),
-                "predictors"=vertex_to_str(vertex),
-                "k_fold"=data_folds[["fold_num"]][[i]]
-                )
-
-            test_results = test_lm(model, test_data)
-            statistics = get_individual_stats(model)
-
-            model_data = append(model_data, test_results)
-            model_data = append(model_data, statistics)
-            per_fold_outputs = append_list_of_lists_rows(per_fold_outputs, model_data)
-        }
-
+        # iterate through vertices and get individual statistics
+        lms_and_data = vertices_to_lm(vertices, train_data, test_data, data_index, fold_index)
         # iterate through edges of graph and get pair statistics
-        edges = list_pgraph_edges(graph)
-        for (k in 1:num_edges(graph)) {
-            edge = edges[k,]
-            subset = vertex_to_str(get_edge_subset(graph, edge))
-            superset = vertex_to_str(get_edge_superset(graph, edge))
-            added_predictor_index = get_edge_added_predictor_index(graph, edge)
-            added_predictor = predictors[[added_predictor_index]]
+        per_fold_pairwise = edges_to_pairs(graph, edges, predictors, lms_and_data)
 
-            # pull objects out of the various lists that temporariliy store them
-            # because R is a mess
-            sub_index = get_list_of_lists_index(per_fold_outputs, "predictors", subset)
-            super_index = get_list_of_lists_index(per_fold_outputs, "predictors", superset)
-            sub_lm = model_bank[[sub_index]]
-            super_lm = model_bank[[super_index]]
-            sub_ptransform = ptransform_bank[[sub_index]]
-            super_ptransform = ptransform_bank[[super_index]]
-            sub_data = get_list_of_lists_row(per_fold_outputs, sub_index)
-            super_data = get_list_of_lists_row(per_fold_outputs, super_index)
-
-            # get stats for the model pair along this edge
-            paired_stats = get_paired_stats(sub_lm, super_lm, sub_ptransform,
-                    super_ptransform, sub_data, super_data, added_predictor)
-            pairwise_data = append_list_of_lists_rows(pairwise_data, paired_stats)
-        }
-        individual_data = append_list_of_lists_rows(individual_data, per_fold_outputs)
+        individual_data = append_list_of_lists_rows(individual_data, lms_and_data[["model_data"]])
+        pairwise_data = append_list_of_lists_rows(pairwise_data, per_fold_pairwise)
     }
 
     return(list("individual"=individual_data, "paired"=pairwise_data))
+}
+
+edges_to_pairs = function(graph, edges, predictors, lms_and_data) {
+    model_bank = lms_and_data[["models"]]
+    ptransform_bank = lms_and_data[["ptransform"]]
+    model_data = lms_and_data[["model_data"]]
+
+    pairwise_data = NULL
+
+    for (i in 1:num_edges(edges)) {
+        edge = edges[i,]
+        subset = vertex_to_str(get_edge_subset(graph, edge))
+        superset = vertex_to_str(get_edge_superset(graph, edge))
+        added_predictor_index = get_edge_added_predictor_index(graph, edge)
+        added_predictor = predictors[[added_predictor_index]]
+
+        # pull objects out of the various lists that temporariliy store them
+        # because R is a mess
+        sub_index = get_list_of_lists_index(model_data, "predictors", subset)
+        super_index = get_list_of_lists_index(model_data, "predictors", superset)
+        sub_lm = model_bank[[sub_index]]
+        super_lm = model_bank[[super_index]]
+        sub_ptransform = ptransform_bank[[sub_index]]
+        super_ptransform = ptransform_bank[[super_index]]
+        sub_data = get_list_of_lists_row(model_data, sub_index)
+        super_data = get_list_of_lists_row(model_data, super_index)
+
+        # get stats for the model pair along this edge
+        paired_stats = get_paired_stats(sub_lm, super_lm, sub_ptransform,
+                super_ptransform, sub_data, super_data, added_predictor)
+        pairwise_data = append_list_of_lists_rows(pairwise_data, paired_stats)
+    }
+    return(pairwise_data)
+}
+
+vertices_to_lm = function(vertices, train_data, test_data, data_index, fold_index) {
+
+    response_name = get_response_colname(train_data)
+    predictors = get_predictor_colnames(train_data)
+
+    model_data = NULL
+    # need separate lists because R can't handle objects in lists!
+    model_bank = list()
+    ptransform_bank = list()
+    response_var = train_data[[response_name]]
+
+    # need to normalize because powerTransform can't take negative or zero values
+    normalized_train_data = normalize_dataframe(train_data)
+
+    for (j in 1:length(vertices)) {
+        vertex = vertices[j]
+        predictor_matrix = get_vertex_predictors(vertex)
+        formula_string = build_formula_string(predictor_matrix, response_name, predictors)
+
+        model = lm(formula=formula_string, data=train_data)
+        model_bank[[j]] = model
+        ptransform = get_power_transform(normalized_train_data, predictor_matrix)
+        ptransform_bank[[j]] = ptransform
+
+        model_data_row = list(
+            "dataset"=data_index,
+            "response_mean"=mean(response_var),
+            "response_sd"=sd(response_var),
+            "predictors"=vertex_to_str(vertex),
+            "k_fold"=fold_index
+            )
+
+        test_results = test_lm(model, test_data)
+        statistics = get_individual_stats(model)
+
+        model_data_row = append(model_data_row, test_results)
+        model_data_row = append(model_data_row, statistics)
+        model_data = append_list_of_lists_rows(model_data, model_data_row)
+    }
+
+    return(list("models"=model_bank, "ptransform"=ptransform_bank, "model_data"=model_data))
 }
 
 # finds MSE for linear_model on test_data
@@ -253,18 +279,30 @@ get_individual_stats = function(linear_model) {
     return(statistics)
 }
 
-get_power_transform = function(dataset, predictor_matrix) {
-    response = get_response_colname(dataset)
-    predictors = get_predictor_colnames(dataset)
-    matrix = cbind(dataset[response])
-    for (i in 1:length(predictors)) {
-        if (predictor_matrix[i] == 1) {
-            name = predictors[[i]]
-            column = dataset[name]
-            matrix = cbind(matrix, column)
+# can return NULL because powerTransform breaks occasionally
+get_power_transform = function(normalized_dataset, predictor_matrix) {
+    ptransform = NULL
+    tryCatch(
+        {
+            response = get_response_colname(normalized_dataset)
+            predictors = get_predictor_colnames(normalized_dataset)
+            matrix = cbind(normalized_dataset[response])
+            for (i in 1:length(predictors)) {
+                if (predictor_matrix[i] == 1) {
+                    name = predictors[[i]]
+                    column = normalized_dataset[name]
+                    matrix = cbind(matrix, column)
+                }
+            }
+            ptransform = powerTransform(matrix)
+        },
+        error=function(cond) {
+            # print(summary(normalized_dataset))
+            print("Failed to get powerTransform:")
+            print(cond)
         }
-    }
-    return(powerTransform(matrix))
+    )
+    return(ptransform)
 }
 
 aic_correction = function(aic, n, p) {
@@ -310,11 +348,20 @@ get_paired_stats = function(subset_lm, superset_lm, subset_ptransform,
 
     # power transform (just the distance is fine for now)
     # estimated power, row is the predictor and column 1 is estimated power
-    ptransform_summary = summary(superset_ptransform)
-    response_est_ptransform = ptransform_summary$result[1,1]
-    added_predictor_est_ptransform = ptransform_summary$result[added_predictor_index,1]
-    # pvalue for all untransformed, row 2 for untransformed and column 3 for pvalue
-    null_ptransform_pvalue = ptransform_summary$tests[2,3]
+    # NOTE: in order to not break the meta bootstrap process, have to put non NA values
+    # here if powerTransform breaks, even though they are fake values
+    # therefore they are by default set to 0 to minimize effect on other values
+    null_ptransform_pvalue = 0
+    response_est_ptransform = 0
+    added_predictor_est_ptransform = 0
+    # superset_ptransform = NULL # try getting rid of ptransform entirely to fix bootstrapping problems
+    if (!is.null(superset_ptransform)) {
+        ptransform_summary = summary(superset_ptransform)
+        response_est_ptransform = ptransform_summary$result[1,1]
+        added_predictor_est_ptransform = ptransform_summary$result[added_predictor_index,1]
+        # pvalue for all untransformed, row 2 for untransformed and column 3 for pvalue
+        # null_ptransform_pvalue = ptransform_summary$tests[2,3]
+    }
 
     statistics = list(
         "dataset"=superset_stats[["dataset"]],
@@ -333,7 +380,7 @@ get_paired_stats = function(subset_lm, superset_lm, subset_ptransform,
         "mse_diff"=subset_stats[["mse"]] - superset_stats[["mse"]],
         "mse_ratio"=subset_stats[["mse"]] / superset_stats[["mse"]],
         "std_mse_diff"=subset_stats[["std_mse"]] - superset_stats[["std_mse"]],
-        "std_mse_ratio"=subset_stats[["std_mse"]] / superset_stats[["std_mse"]],
+        # cut std_mse_ratio because it is identical to mse_ratio
         "superset_r_sq"=superset_stats[["r_sq"]],
         "superset_r_sq_adj"=superset_stats[["r_sq_adj"]],
         "r_sq_diff"=subset_stats[["r_sq"]] - superset_stats[["r_sq"]],
@@ -374,13 +421,13 @@ generate_meta_data = function(num_folds, num_subsets,
     # generate data
     for (i in 1:length(filenames)) {
         name = filenames[i]
-        # need to normalize because powerTransform can't take negative or zero values
+        # normalize the data
         dataset = load_dataframe(file.path(data_path, name), normalize=TRUE)
         if (is.null(dataset)) {
             logging_print("WARNING: dataset not loaded", name)
         }
         else {
-            logging_print("Generating linear models for dataset:", name)
+            logging_print("Generating linear models for dataset with number of columns:", name, length(get_predictor_colnames(dataset)))
             models_and_data = fit_linear_models(i, dataset, num_folds, num_subsets)
             individual_data = append_list_of_lists_rows(individual_data, models_and_data[["individual"]])
             paired_data = append_list_of_lists_rows(paired_data, models_and_data[["paired"]])

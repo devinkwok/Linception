@@ -49,11 +49,38 @@ create_pgraph = function(num_predictors) {
             }
         }
     }
-    return(prune_pgraph(graph))
+    return(graph)
+}
+
+create_incremental_pgraph = function(num_predictors) {
+    graph = make_empty_graph(n=0, directed=TRUE)
+    graph = add_vertices(graph, 1)
+    graph = set_vertex_predictors(graph, 1, rep(0, num_predictors))
+    return(graph)
+}
+
+grow_incremental_pgraph = function(graph, vertex) {
+    # add all predictor combinations that are one more than current vertex
+    predictors = get_vertex_predictors(vertex)
+    start_index = as_ids(vertex)
+    num_predictors = length(predictors)
+    graph = add_vertices(graph, num_predictors - sum(predictors))
+
+    for (i in 1:num_predictors) {
+        # make an added predictor if not already present
+        if (predictors[[i]] == 0) {
+            current_index = start_index + i
+            new_predictors = predictors
+            new_predictors[[i]] = 1
+            graph = set_vertex_predictors(graph, current_index, new_predictors)
+            graph = add_edges(graph, c(start_index, current_index))
+        }
+    }
+    return(graph)
 }
 
 get_null_model_vertex = function(graph) {
-    return(V(graph)[0])
+    return(V(graph)[1])
 }
 
 get_full_model_vertex = function(graph) {
@@ -61,23 +88,22 @@ get_full_model_vertex = function(graph) {
 }
 
 forward_step_vertices = function(graph, vertex) {
-    return(neighbors(graph, vertex, mode="out"))
+    return(neighbors(graph, as_ids(vertex), mode="out"))
+}
+
+vertices_to_edges = function(vertex_from, vertices_to) {
+    from_id = as_ids(vertex_from)
+    to_ids = as_ids(vertices_to)
+    edges = cbind(rep(from_id, length(to_ids)), unlist(to_ids))
+    return(edges)
 }
 
 backward_step_vertices = function(graph, vertex) {
-    return(neighbors(graph, vertex, mode="in"))
+    return(neighbors(graph, as_ids(vertex), mode="in"))
 }
 
-# if there are too many predictors it is better to stochastically
-# sample this space
-# randomly remove edges and vertices to reduce size of graph
-prune_pgraph = function(graph, max_vertices=NULL, max_edges=NULL) {
-    # TODO: currently does no pruning, returns original
-    return(graph)
-}
-
-num_edges = function(graph) {
-    return(length(E(graph)))
+num_edges = function(edgelist) {
+    return(length(edgelist[,1]))
 }
 
 # returns a list of all edges in the graph (wrapper)

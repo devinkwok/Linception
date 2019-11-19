@@ -29,10 +29,16 @@ Example:
 "1" 107 1687 867 269 9059 0.102971811805368 12 0
 "2" 97 1508 825 265 7685 0.102362995884646 6 0
 ```
-3. From the project root directory, run `Rscript src/main.R`.
-This calls `generate_meta_data()` and outputs `.csv`
-files containing linear models and their statistics to `outputs/`.
-Every paired statistic is of the form `superset - subset` or `superset/subset`.
+3. From the project root directory, run `Rscript src/main.R`. This file includes
+all necessary code to run the steps below.
+4. To generate meta-data from assorted datasets, use the function `generate_meta_data()`
+ from `data.R`. By default `main.R` outputs `.csv` files containing linear models and their statistics
+to `outputs/`. Every paired statistic is of the form `superset - subset` or `superset/subset`.
+ Warning: depending on the size of input datasets, this may take a long time!
+5. To use a trained meta-model to do forward step predictor selection, use the function
+`fit_model_to_predictors()` from `model.R`. This returns a `lm` object with optimized predictors.
+6. To boostrap the meta-model by letting it select its own predictors, use the function
+`bootstrap_meta_model()` from `model.R`. Warning: this may take a long time!
 
 
 Overview
@@ -57,6 +63,12 @@ subsets. The predictors can be any statistics calculated from the linear model
 pairwise statistics (such as analysis of variance significance,
 ratio of AIC, etc.).
 
+Furthermore, the linear model is able to choose its own predictors recursively.
+By initializing with any linear model which is approximately able to estimate
+the slope of the minimization surface, successive application of the meta-model
+to its own parameter selection may allow the meta-model to converge on a more
+accurate estimation of the minimization slope.
+
 Methodology
 -----------
 * Find datasets with sufficient size and other properties
@@ -66,5 +78,12 @@ Methodology
 * Apply meta-model to choose parameters using a greedy algorithm
 * Verify effectiveness of meta-model versus hand-trained linear models
     other datasets, etc.
+* Boostrap meta-model by using it to choose its own predictors.
 
+Abstract and Presentation
+-------------------------
+
+Abstract [https://docs.google.com/document/d/1Z5Tzzr__lr5IFiIcDqXRFTFaGCUm-CiBkm4Evh75xks/edit?usp=sharing](https://docs.google.com/document/d/1Z5Tzzr__lr5IFiIcDqXRFTFaGCUm-CiBkm4Evh75xks/edit?usp=sharing)
+
+Presentation slides [https://docs.google.com/presentation/d/1Mqsdy-56XWalV6d4YQwB7B3xC9AzN107M9Qvw39v4Qw/edit?usp=sharing](https://docs.google.com/presentation/d/1Mqsdy-56XWalV6d4YQwB7B3xC9AzN107M9Qvw39v4Qw/edit?usp=sharing)
 

@@ -1,0 +1,7 @@
+# NOT DONE: (not enough time)
+# do a 95% CI on meta-model predictions
+# compare with SD of mse by k-folds
+
+
+# make the minimization surface image
+# check the presentation rubric one more time

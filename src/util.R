@@ -21,7 +21,7 @@ DEFAULT_REQUIRES = list(
     "MIN_RESPONSE" = 1,
     "MAX_RESPONSE" = 1,
     "MIN_COLS" = 3,
-    "MAX_COLS" = 15,
+    "MAX_COLS" = 20,
     "MIN_ROWS" = 100,
     "MAX_ROWS" = 10000,
 
@@ -190,7 +190,7 @@ is_valid_data = function(dataframe, requires=DEFAULT_REQUIRES) {
 }
 
 load_dataframe = function(filename, requires=DEFAULT_REQUIRES, normalize=FALSE) {
-    dataframe = read.table(filename)
+    dataframe = read.table(filename, header=TRUE, sep=",")
 
     if (is_valid_data(dataframe, requires)) {
 
@@ -215,7 +215,7 @@ load_dataframe = function(filename, requires=DEFAULT_REQUIRES, normalize=FALSE) 
 
 save_dataframe = function(dataframe, name, path) {
     filename = file.path(path, name)
-    write.table(dataframe, file=filename)
+    write.table(dataframe, file=filename, sep=",")
     logging_print("Saved dataset", filename)
     return(filename)
 }
@@ -278,7 +278,7 @@ normalize_dataframe = function(dataframe) {
         column = dataframe[i]
         smallest = min(column)
         range = max(column) - smallest
-        df[i] = (column - smallest + 1) / range
+        df[i] = (column - smallest) / range + 1
     }
     return(df)
 }
